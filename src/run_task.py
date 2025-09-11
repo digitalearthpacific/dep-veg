@@ -40,9 +40,9 @@ from utils import VegProcessor
 
 # Configure logging ONCE here (root logger)
 logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s | %(name)s | %(levelname)s | %(message)s"
+    level=logging.INFO, format="%(asctime)s | %(name)s | %(levelname)s | %(message)s"
 )
+
 
 def main(
     model_zip_uri: Annotated[str, typer.Option()],
@@ -68,8 +68,8 @@ def main(
 
     itempath = S3ItemPath(
         bucket=output_bucket,
-        sensor="s2", ########################
-        dataset_id="vegheight",########################
+        sensor="s2",  ########################
+        dataset_id="vegheight",  ########################
         version=version,
         time=datetime,
     )
@@ -83,8 +83,8 @@ def main(
 
     ######################## where to upload model?
     # Download the model and unzip it
-    Path('models').mkdir(parents=True, exist_ok=True)
-    
+    Path("models").mkdir(parents=True, exist_ok=True)
+
     model_zip = "models/" + model_zip_uri.split("/")[-1]
     if not Path(model_zip).exists():
         log.info(f"Downloading model from {model_zip_uri}")
@@ -94,7 +94,7 @@ def main(
 
         log.info("Unzipping model")
         with ZipFile(model_zip, "r") as zip_ref:
-            zip_ref.extractall('models/')
+            zip_ref.extractall("models/")
 
     # Open the model ######################## this is done in the Processor
     # model = joblib.load(model_zip.replace(".zip", ".joblib"))
@@ -111,11 +111,13 @@ def main(
     loader = OdcLoader(
         bands=["red", "green", "blue"],
         # chunks={"x": 3201, "y": 3201},######################## don't need it for geomad - small im size
-        groupby="solar_day", ######################## does this matter for our application?
+        groupby="solar_day",  ######################## does this matter for our application?
         fail_on_error=False,
     )
 
-    processor = VegProcessor() ######################## this includes: loads 2 models (1GB each), loads one .pkl file for stats, numpy [3,h,w] uint16 for input,  
+    processor = (
+        VegProcessor()
+    )  ######################## this includes: loads 2 models (1GB each), loads one .pkl file for stats, numpy [3,h,w] uint16 for input,
 
     # Custom writer so we write multithreaded
     writer = AwsDsCogWriter(itempath, write_multithreaded=True)

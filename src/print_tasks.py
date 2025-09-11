@@ -31,8 +31,8 @@ def print_tasks(
         for tile_id, _ in tile_ids:
             itempath = S3ItemPath(
                 bucket=output_bucket,
-                sensor="s2",########################
-                dataset_id="vegheight",########################
+                sensor="s2",  ########################
+                dataset_id="vegheight",  ########################
                 version=version,
                 time=datetime,
             )
