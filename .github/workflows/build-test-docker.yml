@@ -28,7 +28,7 @@ jobs:
         with:    
           options: "--check --verbose"    
           src: "./src"   
-          version: "~= 22.0"
+          version: "~= 25.0"
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v2
