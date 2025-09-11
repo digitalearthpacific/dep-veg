@@ -99,7 +99,7 @@ def main(
     # Open the model ######################## this is done in the Processor
     # model = joblib.load(model_zip.replace(".zip", ".joblib"))
 
-    tile_index = tuple(int(i) for i in tile_id.split(","))
+    tile_index = tuple(int(i) for i in tile_id.replace('[','').replace(']','').split(","))
     geobox = grid.tile_geobox(tile_index)
 
     searcher = PystacSearcher(
