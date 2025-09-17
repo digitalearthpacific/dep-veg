@@ -14,8 +14,6 @@ spec:
       app: s2-vegheight
     annotations:
       karpenter.sh/do-not-disrupt: "true"
-  nodeSelector:
-      karpenter.sh/capacity-type: "spot"
   arguments:
     parameters:
       - name: version
@@ -25,7 +23,7 @@ spec:
       - name: base-product
         value: "s2"
       - name: image-tag
-        value: "0.0.1"
+        value: "0.0.1-2-gc90298f"
       - name: year
         value: "2024"
       - name: bucket
@@ -113,9 +111,6 @@ spec:
           - key: "nvidia.com/gpu"
             operator: "Exists"
             effect: "NoSchedule"
-      metadata:
-        annotations:
-          node.kubernetes.io/instance-type: "g6.4xlarge"
       container:
         image: "ghcr.io/digitalearthpacific/{{ workflow.parameters.image-name }}:{{ workflow.parameters.image-tag }}"
         imagePullPolicy: IfNotPresent
@@ -123,9 +118,11 @@ spec:
           requests:
             cpu: 14
             memory: 48Gi
+            nvidia.com/gpu: 1
           limits:
             cpu: 16
             memory: 60Gi
+            nvidia.com/gpu: 1
         command: [python]
         args:
           - src/run_task.py
