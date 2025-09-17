@@ -74,7 +74,9 @@ def main(
         time=datetime,
     )
     stac_document = itempath.stac_path(tile_id)
-    stac_document = stac_document.replace('[', '').replace(']','')  # remove brackets from tile_id for path
+    stac_document = stac_document.replace("[", "").replace(
+        "]", ""
+    )  # remove brackets from tile_id for path
 
     # If we don't want to overwrite, and the destination file already exists, skip it
     if not overwrite and object_exists(output_bucket, stac_document, client=client):
@@ -100,7 +102,9 @@ def main(
     # Open the model ######################## this is done in the Processor
     # model = joblib.load(model_zip.replace(".zip", ".joblib"))
 
-    tile_index = tuple(int(i) for i in tile_id.replace('[','').replace(']','').split(","))
+    tile_index = tuple(
+        int(i) for i in tile_id.replace("[", "").replace("]", "").split(",")
+    )
     geobox = grid.tile_geobox(tile_index)
 
     searcher = PystacSearcher(
