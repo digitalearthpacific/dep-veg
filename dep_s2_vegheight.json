@@ -1,0 +1,95 @@
+{
+  "type": "Collection",
+  "id": "dep_s2_vegheight",
+  "stac_version": "1.1.0",
+  "description": "Vegetation height across the Pacific, derived from Sentinel-2 data.",
+  "links": [
+    {
+      "rel": "root",
+      "href": "https://stac.staging.digitalearthpacific.org",
+      "type": "application/json",
+      "title": "Digital Earth Pacific STAC Root"
+    },
+    {
+      "rel": "self",
+      "href": "https://stac.staging.digitalearthpacific.org/collections/dep_s2_vegheight",
+      "type": "application/json",
+      "title":"Vegetation Height from Sentinel-2 Geomad"
+    }
+  ],
+  "title": "Vegetation Height from Sentinel-2",
+  "extent": {
+    "spatial": {
+      "bbox": [
+        [
+          100.0,
+          -30.0,
+          260.0,
+          30.0
+        ]
+      ]
+    },
+    "temporal": {
+      "interval": [
+        [
+          "2023-01-01T00:00:00Z",
+          "2024-12-31T00:00:00Z"
+        ]
+      ]
+    }
+  },
+  "license": "CC-BY-4.0",
+  "keywords": [
+    "Sentinel-2",
+    "Geomad",
+    "Vegetation Height",
+    "Pacific"
+  ],
+  "providers": [
+    {
+      "name": "Digital Earth Pacific",
+      "roles": [
+        "processor",
+        "host"
+      ],
+      "url": "https://digitalearthpacific.org"
+    },
+    {
+      "name": "ESA",
+      "roles": [
+        "producer",
+        "licensor"
+      ],
+      "url": "https://sentinel.esa.int/web/sentinel/missions/sentinel-2"
+    },
+    {
+      "name": "Geoneon Pty. Ltd.",
+      "roles": [
+        "producer",
+        "licensor"
+      ],
+      "url": "https://www.geoneon.com"
+    }
+  ],
+  "summaries": {
+    "gsd": [
+      10
+    ],
+    "eo:bands": [
+      {
+        "name": "height",
+        "common_name": "vegetation_height",
+        "description": "Estimated vegetation canopy height in meters.",
+        "data_type": "float32",
+        "min": 0.0,
+        "max": 40.0,
+        "nodata": "nan"
+      }
+    ],
+    "platform": [
+      "Sentinel-2A",
+      "Sentinel-2B",
+      "Sentinel-2C"
+    ]
+  }
+}

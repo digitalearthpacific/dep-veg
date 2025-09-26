@@ -57,8 +57,6 @@ def main(
     log.info("Starting processing")
 
     grid = PACIFIC_GRID_10
-    # catalog = "https://earth-search.aws.element84.com/v1"
-    # collection = "sentinel-2-l2a"
     catalog = "https://stac.digitalearthpacific.org"
     collection = "dep_s2_geomad"
     # Make sure we can access S3
@@ -73,10 +71,11 @@ def main(
         version=version,
         time=datetime,
     )
+
+    # tile_id is a string like "[8, 10]", need to make it into a string "8,10" for the path
+    tile_id = tile_id.replace(" ", "").replace("[", "").replace("]", "")
+
     stac_document = itempath.stac_path(tile_id)
-    stac_document = stac_document.replace("[", "").replace(
-        "]", ""
-    )  # remove brackets from tile_id for path
 
     # If we don't want to overwrite, and the destination file already exists, skip it
     if not overwrite and object_exists(output_bucket, stac_document, client=client):
@@ -98,9 +97,6 @@ def main(
         log.info("Unzipping model")
         with ZipFile(model_zip, "r") as zip_ref:
             zip_ref.extractall("models/")
-
-    # Open the model ######################## this is done in the Processor
-    # model = joblib.load(model_zip.replace(".zip", ".joblib"))
 
     tile_index = tuple(
         int(i) for i in tile_id.replace("[", "").replace("]", "").split(",")
@@ -129,7 +125,11 @@ def main(
 
     # STAC making thing
     stac_creator = StacCreator(
-        itempath=itempath, remote=True, make_hrefs_https=True, with_raster=True
+        itempath=itempath,
+        collection_url_root="https://stac.digitalearthpacific.org/collections",
+        remote=True,
+        make_hrefs_https=True,
+        with_raster=True,
     )
 
     try:
@@ -154,6 +154,7 @@ def main(
     log.info(
         f"Completed processing. Wrote {len(paths)} items to https://{output_bucket}.s3.us-west-2.amazonaws.com/{stac_document}"
     )
+    log.info(paths)
 
 
 if __name__ == "__main__":

@@ -8,7 +8,7 @@ spec:
   podGC:
     strategy: OnWorkflowSuccess
     deleteDelayDuration: 600s
-  parallelism: 1
+  parallelism: 20
   podMetadata:
     labels:
       app: s2-vegheight
@@ -18,12 +18,13 @@ spec:
     parameters:
       - name: version
         value: "0.0.1" # The version of the data product being made
+        # value: "0.0.1-5-gcf1925c"
       - name: image-name
         value: "dep-veg" # The Docker image
       - name: base-product
         value: "s2"
       - name: image-tag
-        value: "0.0.1-2-gc90298f"
+        value: "0.0.1-5-gcf1925c"
       - name: year
         value: "2024"
       - name: bucket
