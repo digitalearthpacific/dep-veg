@@ -26,55 +26,58 @@ logging.basicConfig(
     level=logging.INFO, format="%(asctime)s | %(name)s | %(levelname)s | %(message)s"
 )
 
+
 def main(
     # Required options (no defaults → must be passed)
-    tile_id: Annotated[str, typer.Option(
-        "--tile-id", "-t",
-        help="Tile ID of GeoMAD tile (e.g. 8,10)"
-    )],
-    version: Annotated[str, typer.Option(
-        "--version", "-v",
-        help="Version string for output data (e.g. 0.0.1)"
-    )],
-
+    tile_id: Annotated[
+        str, typer.Option("--tile-id", "-t", help="Tile ID of GeoMAD tile (e.g. 8,10)")
+    ],
+    version: Annotated[
+        str,
+        typer.Option(
+            "--version", "-v", help="Version string for output data (e.g. 0.0.1)"
+        ),
+    ],
     # Options with defaults
-    output_bucket: Annotated[str, typer.Option(
-        "--output-bucket",
-        help="""Where to save results. 
+    output_bucket: Annotated[
+        str,
+        typer.Option(
+            "--output-bucket",
+            help="""Where to save results. 
         Production: dep-public-data
         Staging:    dep-public-staging
-        """
-    )] = "dep-public-staging",
-
-    collection_url_root: Annotated[str, typer.Option(
-        "--collection-url-root",
-        help="""STAC Collection URL root.
+        """,
+        ),
+    ] = "dep-public-staging",
+    collection_url_root: Annotated[
+        str,
+        typer.Option(
+            "--collection-url-root",
+            help="""STAC Collection URL root.
         Production: https://stac.digitalearthpacific.org/collections
         Staging:    https://stac.staging.digitalearthpacific.org/collections
-        """
-    )] = "https://stac.staging.digitalearthpacific.org/collections",
-
-    model_zip_uri: Annotated[str, typer.Option(
-        "--model-zip-uri",
-        help="Deep Learning Model download path"
-    )] = "https://dep-public-staging.s3.us-west-2.amazonaws.com/dep_s2_vegheight/models/dep-veg-models.zip",
-
+        """,
+        ),
+    ] = "https://stac.staging.digitalearthpacific.org/collections",
+    model_zip_uri: Annotated[
+        str, typer.Option("--model-zip-uri", help="Deep Learning Model download path")
+    ] = "https://dep-public-staging.s3.us-west-2.amazonaws.com/dep_s2_vegheight/models/dep-veg-models.zip",
     # Boolean toggle
-    overwrite: Annotated[bool, typer.Option(
-        "--overwrite/--no-overwrite",
-        help="Overwrite existing results"
-    )] = False,
-
+    overwrite: Annotated[
+        bool,
+        typer.Option("--overwrite/--no-overwrite", help="Overwrite existing results"),
+    ] = False,
     # Another simple option
-    datetime: Annotated[str, typer.Option(
-        "--datetime",
-        help="Datetime string (e.g. 2024)"
-    )] = "2024",
+    datetime: Annotated[
+        str, typer.Option("--datetime", help="Datetime string (e.g. 2024)")
+    ] = "2024",
 ) -> None:
-    
+
     log = logging.getLogger(tile_id)
     log.info("Starting processing")
-    log.info(f"Input received: \ntile_id: {tile_id}\n version: {version}\n output_bucket: {output_bucket}\n datetime: {datetime}\n overwrite: {overwrite}\n model_zip_uri: {model_zip_uri}\n collection_url_root: {collection_url_root}")
+    log.info(
+        f"Input received: \ntile_id: {tile_id}\n version: {version}\n output_bucket: {output_bucket}\n datetime: {datetime}\n overwrite: {overwrite}\n model_zip_uri: {model_zip_uri}\n collection_url_root: {collection_url_root}"
+    )
 
     grid = PACIFIC_GRID_10
     catalog = "https://stac.digitalearthpacific.org"
@@ -86,8 +89,8 @@ def main(
 
     itempath = S3ItemPath(
         bucket=output_bucket,
-        sensor="s2",  
-        dataset_id="vegheight",  
+        sensor="s2",
+        dataset_id="vegheight",
         version=version,
         time=datetime,
     )
@@ -96,7 +99,9 @@ def main(
     tile_id = tile_id.replace(" ", "").replace("[", "").replace("]", "")
 
     stac_document = itempath.stac_path(tile_id)
-    log.info(f"result will be saved to https://{output_bucket}.s3.us-west-2.amazonaws.com/{stac_document}")
+    log.info(
+        f"result will be saved to https://{output_bucket}.s3.us-west-2.amazonaws.com/{stac_document}"
+    )
 
     # If we don't want to overwrite, and the destination file already exists, skip it
     if not overwrite and object_exists(output_bucket, stac_document, client=client):
