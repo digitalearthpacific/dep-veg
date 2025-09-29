@@ -4,6 +4,8 @@ recyclebin/
 model*.pth
 models/
 aws/
+.aws/
+archived/
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
