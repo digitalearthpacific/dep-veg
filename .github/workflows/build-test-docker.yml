@@ -30,6 +30,15 @@ jobs:
           src: "./src"   
           version: "~= 25.0"
 
+      - name: free disk space
+        run: |
+          df -h
+          sudo swapoff -a
+          sudo rm -f /swapfile
+          sudo apt clean
+          docker rmi $(docker image ls -aq)
+          df -h
+
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v2
 
