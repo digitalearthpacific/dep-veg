@@ -55,7 +55,8 @@ def main(
             "--collection-url-root",
             help="""STAC Collection URL root.
         Production: https://stac.digitalearthpacific.org/collections
-        Staging:    https://stac.staging.digitalearthpacific.org/collections
+        Staging:    https://stac.staging.digitalearthpacific.io/collections
+
         """,
         ),
     ] = "https://stac.staging.digitalearthpacific.org/collections",
