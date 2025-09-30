@@ -59,7 +59,8 @@ def main(
 
         """,
         ),
-    ] = "https://stac.staging.digitalearthpacific.org/collections",
+    ] = "https://stac.staging.digitalearthpacific.io/collections",
+
     model_zip_uri: Annotated[
         str, typer.Option("--model-zip-uri", help="Deep Learning Model download path")
     ] = "https://dep-public-staging.s3.us-west-2.amazonaws.com/dep_s2_vegheight/models/dep-veg-models.zip",
