@@ -1,5 +1,7 @@
 data
-archive
+archived
 recyclebin
 models/
 aws/
+.aws/
+Test_Processor.ipynb
