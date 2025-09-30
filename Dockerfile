@@ -20,7 +20,8 @@ RUN apt-get update && apt-get install -y \
 
 RUN pip3 install --upgrade pip setuptools wheel
 ADD requirements.txt /tmp/requirements.txt
-RUN pip3 install -r /tmp/requirements.txt
+RUN pip3 install --no-cache-dir -r /tmp/requirements.txt \
+ && rm -rf /root/.cache/pip
 
 ADD . /code
 
