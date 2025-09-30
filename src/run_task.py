@@ -60,16 +60,13 @@ def main(
         """,
         ),
     ] = "https://stac.staging.digitalearthpacific.io/collections",
-
     model_zip_uri: Annotated[
         str, typer.Option("--model-zip-uri", help="Deep Learning Model download path")
     ] = "https://dep-public-staging.s3.us-west-2.amazonaws.com/dep_s2_vegheight/models/dep-veg-models.zip",
-    # Boolean toggle
     overwrite: Annotated[
         bool,
         typer.Option("--overwrite/--no-overwrite", help="Overwrite existing results"),
     ] = False,
-    # Another simple option
     datetime: Annotated[
         str, typer.Option("--datetime", help="Datetime string (e.g. 2024)")
     ] = "2024",
@@ -97,8 +94,7 @@ def main(
         time=datetime,
     )
 
-    # tile_id is a string like "[8, 10]", need to make it into a string "8,10" for the path
-    tile_id = tile_id.replace(" ", "").replace("[", "").replace("]", "")
+    # tile_id is a string like "45,55"
 
     stac_document = itempath.stac_path(tile_id)
     log.info(
@@ -126,9 +122,7 @@ def main(
         with ZipFile(model_zip, "r") as zip_ref:
             zip_ref.extractall("models/")
 
-    tile_index = tuple(
-        int(i) for i in tile_id.replace("[", "").replace("]", "").split(",")
-    )
+    tile_index = tuple(int(i) for i in tile_id.split(","))
     geobox = grid.tile_geobox(tile_index)
 
     searcher = PystacSearcher(

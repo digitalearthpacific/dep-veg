@@ -39,7 +39,8 @@ def print_tasks(
             stac_path = itempath.stac_path(tile_id)
 
             if not object_exists(output_bucket, stac_path, client=s3_client):
-                valid_tile_ids.append(tile_id)
+                tile_id_ = ",".join([str(i) for i in tile_id])
+                valid_tile_ids.append(tile_id_)
 
         tile_ids = valid_tile_ids
 
