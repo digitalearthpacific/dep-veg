@@ -21,23 +21,6 @@ from typing_extensions import Annotated
 
 from utils import VegProcessor
 
-
-# def get_logger(region_code: str) -> Logger:
-#     """Set up a simple logger"""
-#     console = StreamHandler()
-#     time_format = "%Y-%m-%d %H:%M:%S"
-#     console.setFormatter(
-#         Formatter(
-#             fmt=f"%(asctime)s %(levelname)s ({region_code}):  %(message)s",
-#             datefmt=time_format,
-#         )
-#     )
-
-#     log = getLogger("GEOMAD")
-#     log.addHandler(console)
-#     log.setLevel(INFO)
-#     return log
-
 # Configure logging ONCE here (root logger)
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s | %(name)s | %(levelname)s | %(message)s"
@@ -45,16 +28,55 @@ logging.basicConfig(
 
 
 def main(
-    model_zip_uri: Annotated[str, typer.Option()],
-    tile_id: Annotated[str, typer.Option()],
-    version: Annotated[str, typer.Option()],
-    output_bucket: str = "dep-public-staging",
-    overwrite: Annotated[bool, typer.Option()] = False,
-    datetime: Annotated[str, typer.Option()] = "2024",
+    # Required options (no defaults → must be passed)
+    tile_id: Annotated[
+        str, typer.Option("--tile-id", "-t", help="Tile ID of GeoMAD tile (e.g. 8,10)")
+    ],
+    version: Annotated[
+        str,
+        typer.Option(
+            "--version", "-v", help="Version string for output data (e.g. 0.0.1)"
+        ),
+    ],
+    # Options with defaults
+    output_bucket: Annotated[
+        str,
+        typer.Option(
+            "--output-bucket",
+            help="""Where to save results. 
+        Production: dep-public-data
+        Staging:    dep-public-staging
+        """,
+        ),
+    ] = "dep-public-staging",
+    collection_url_root: Annotated[
+        str,
+        typer.Option(
+            "--collection-url-root",
+            help="""STAC Collection URL root.
+        Production: https://stac.digitalearthpacific.org/collections
+        Staging:    https://stac.staging.digitalearthpacific.io/collections
+
+        """,
+        ),
+    ] = "https://stac.staging.digitalearthpacific.io/collections",
+    model_zip_uri: Annotated[
+        str, typer.Option("--model-zip-uri", help="Deep Learning Model download path")
+    ] = "https://dep-public-staging.s3.us-west-2.amazonaws.com/dep_s2_vegheight/models/dep-veg-models.zip",
+    overwrite: Annotated[
+        bool,
+        typer.Option("--overwrite/--no-overwrite", help="Overwrite existing results"),
+    ] = False,
+    datetime: Annotated[
+        str, typer.Option("--datetime", help="Datetime string (e.g. 2024)")
+    ] = "2024",
 ) -> None:
-    # log = get_logger(tile_id)
+
     log = logging.getLogger(tile_id)
     log.info("Starting processing")
+    log.info(
+        f"Input received: \ntile_id: {tile_id}\n version: {version}\n output_bucket: {output_bucket}\n datetime: {datetime}\n overwrite: {overwrite}\n model_zip_uri: {model_zip_uri}\n collection_url_root: {collection_url_root}"
+    )
 
     grid = PACIFIC_GRID_10
     catalog = "https://stac.digitalearthpacific.org"
@@ -66,16 +88,18 @@ def main(
 
     itempath = S3ItemPath(
         bucket=output_bucket,
-        sensor="s2",  ########################
-        dataset_id="vegheight",  ########################
+        sensor="s2",
+        dataset_id="vegheight",
         version=version,
         time=datetime,
     )
 
-    # tile_id is a string like "[8, 10]", need to make it into a string "8,10" for the path
-    tile_id = tile_id.replace(" ", "").replace("[", "").replace("]", "")
+    # tile_id is a string like "45,55"
 
     stac_document = itempath.stac_path(tile_id)
+    log.info(
+        f"result will be saved to https://{output_bucket}.s3.us-west-2.amazonaws.com/{stac_document}"
+    )
 
     # If we don't want to overwrite, and the destination file already exists, skip it
     if not overwrite and object_exists(output_bucket, stac_document, client=client):
@@ -98,9 +122,7 @@ def main(
         with ZipFile(model_zip, "r") as zip_ref:
             zip_ref.extractall("models/")
 
-    tile_index = tuple(
-        int(i) for i in tile_id.replace("[", "").replace("]", "").split(",")
-    )
+    tile_index = tuple(int(i) for i in tile_id.split(","))
     geobox = grid.tile_geobox(tile_index)
 
     searcher = PystacSearcher(
@@ -126,7 +148,7 @@ def main(
     # STAC making thing
     stac_creator = StacCreator(
         itempath=itempath,
-        collection_url_root="https://stac.digitalearthpacific.org/collections",
+        collection_url_root=collection_url_root,
         remote=True,
         make_hrefs_https=True,
         with_raster=True,
