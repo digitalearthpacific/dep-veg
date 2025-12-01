@@ -19,7 +19,7 @@ from dep_tools.writers import AwsDsCogWriter
 from odc.stac import configure_s3_access
 from typing_extensions import Annotated
 
-from utils import VegProcessor
+from utils import VegProcessorKeepNonVegPixels, rasterize_land_mask_for_geobox
 
 # Configure logging ONCE here (root logger)
 logging.basicConfig(
@@ -62,7 +62,7 @@ def main(
     ] = "https://stac.staging.digitalearthpacific.io/collections",
     model_zip_uri: Annotated[
         str, typer.Option("--model-zip-uri", help="Deep Learning Model download path")
-    ] = "https://dep-public-staging.s3.us-west-2.amazonaws.com/dep_s2_vegheight/models/dep-veg-models.zip",
+    ] = "https://dep-public-staging.s3.us-west-2.amazonaws.com/dep_s2_vegheight/models/dep-veg-model-v1.zip",
     overwrite: Annotated[
         bool,
         typer.Option("--overwrite/--no-overwrite", help="Overwrite existing results"),
@@ -79,8 +79,9 @@ def main(
     )
 
     grid = PACIFIC_GRID_10
-    catalog = "https://stac.digitalearthpacific.org"
-    collection = "dep_s2_geomad"
+    catalog = "https://stac.dataspace.copernicus.eu/v1"
+    collection = "sentinel-2-global-mosaics"
+
     # Make sure we can access S3
     log.info("Configuring S3 access")
     configure_s3_access(cloud_defaults=True)
@@ -132,15 +133,11 @@ def main(
     )
 
     loader = OdcLoader(
-        bands=["red", "green", "blue"],
-        # chunks={"x": 3201, "y": 3201},######################## don't need it for geomad - small im size
-        groupby="solar_day",  ######################## does this matter for our application?
-        fail_on_error=False,
+        bands=["B04", "B03", "B02", 'observations'],#, "B08"],
+        chunks={"x": 1024, "y": 1024}
     )
 
-    processor = (
-        VegProcessor()
-    )  ######################## this includes: loads 2 models (1GB each), loads one .pkl file for stats, numpy [3,h,w] uint16 for input,
+    processor = VegProcessorKeepNonVegPixels() ###################### this includes: loads height model (1GB), loads one .pkl file for stats, downloading input dataset into numpy array shape [3,h,w] float32
 
     # Custom writer so we write multithreaded
     writer = AwsDsCogWriter(itempath, write_multithreaded=True)
