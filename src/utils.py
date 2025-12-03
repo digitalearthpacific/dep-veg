@@ -565,12 +565,12 @@ class VegProcessorKeepNonVegPixels(Processor):
         return height  # [1, h, w], float32
 
     def process(self, img: Dataset) -> Dataset:
-        
+        # breakpoint()
         #img: [4 = RGB + observations, h, w] dtype float32
         coords = {dim: img.coords[dim] for dim in img.dims}
         geobox = img.odc.geobox
         landmask = rasterize_land_mask_for_geobox(geobox, self.land_shp) # [9600,9600]
-        img = img.to_array().squeeze().values
+        img = img.to_array().to_numpy().squeeze()# shape [4, 9600, 9600]
         obs = img[-1] #obs
         img = img[:-1] #RGB 
 
@@ -600,19 +600,19 @@ class VegProcessorKeepNonVegPixels(Processor):
         obs *= self.mask.astype('uint8') # non-land pixels set to 0 observation
     
         # convert to xr Dataset
-        # height_da = xr.DataArray(
-        #     height,  # remove channel dimension, then add 1 channel for time, so no action needed
-        #     dims=["time", "y", "x"],
-        #     coords=coords,
-        #     name="height",
-        # )
+        height_da = xr.DataArray(
+            height,  # remove channel dimension, then add 1 channel for time, so no action needed
+            dims=["time", "y", "x"],
+            coords=coords,
+            name="height",
+        )
 
-        # height_ds = height_da.to_dataset()
-        # height_ds["height"] = height_ds["height"].where(self.mask)
-        # height_ds["height"].attrs["nodata"] = float("nan")
-        # height_ds["height"].attrs["_FillValue"] = float("nan")
-        # return height_ds
-        return height, confidence
+        height_ds = height_da.to_dataset()
+        height_ds["height"] = height_ds["height"].where(self.mask)
+        height_ds["height"].attrs["nodata"] = float("nan")
+        height_ds["height"].attrs["_FillValue"] = float("nan")
+        return height_ds
+        # return height, confidence
 
 def geobox_raster_transform(geobox):
     """

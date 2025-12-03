@@ -14,7 +14,7 @@ from dep_tools.loaders import OdcLoader
 from dep_tools.namers import S3ItemPath
 from dep_tools.searchers import PystacSearcher
 from dep_tools.stac_utils import StacCreator
-from task1 import CopernicusReadAwsStacTask as Task
+from task import CopernicusReadAwsStacTask as Task
 from dep_tools.writers import AwsDsCogWriter
 from odc.stac import configure_s3_access
 from typing_extensions import Annotated
