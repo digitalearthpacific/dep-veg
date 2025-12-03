@@ -103,11 +103,11 @@ class CopernicusReadAwsStacTask(AwsStacTask):
 
     def run(self):
         # ---- READ PHASE (temp copernicus session) ----
-        aws, gdal_opts = get_copernicus_rio_config()
-
+        aws, boto_session, gdal_opts = get_copernicus_rio_config()
+        # using raserio env probably unnecessary as configure_rio is actually passing down the config to the dask client
         with rasterio.Env(session=aws,
                           **gdal_opts):
-            configure_rio(cloud_defaults=True, aws={"session": aws}, **gdal_opts)
+            configure_rio(cloud_defaults=True, aws={"session": boto_session}, **gdal_opts)
             self.logger.info("Reading with Copernicus S3 credentials/session.")
             items = self.searcher.search(self.area)
             input_data = self.loader.load(items, self.area)
@@ -149,8 +149,8 @@ def get_copernicus_rio_config(profile_name="copernicus", force_keys=False):
 
     if use_profile:
         logger.debug("Using copernicus profile")
-        session = boto3.Session(profile_name=profile_name)
-        creds = session.get_credentials()
+        boto_session = boto3.Session(profile_name=profile_name)
+        creds = boto_session.get_credentials()
         if creds:
             access_key = creds.access_key
             secret_key = creds.secret_key
@@ -159,7 +159,7 @@ def get_copernicus_rio_config(profile_name="copernicus", force_keys=False):
         # specific CDSE keys or fallback to standard AWS keys
         access_key = os.environ.get("CDSE_AWS_ACCESS_KEY_ID")
         secret_key = os.environ.get("CDSE_AWS_SECRET_ACCESS_KEY")
-        session = boto3.Session(aws_access_key_id=access_key, aws_secret_access_key=secret_key)
+        boto_session = boto3.Session(aws_access_key_id=access_key, aws_secret_access_key=secret_key)
 
     if not access_key or not secret_key:
         raise RuntimeError(
@@ -178,5 +178,5 @@ def get_copernicus_rio_config(profile_name="copernicus", force_keys=False):
         "GDAL_HTTP_TCP_KEEPALIVE": "YES",
     }
 
-    aws = AWSSession(session)
-    return aws, config
+    aws = AWSSession(boto_session)
+    return aws, boto_session, config
