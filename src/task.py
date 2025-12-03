@@ -9,9 +9,9 @@ from dep_tools.task import AwsStacTask
 from odc.loader._rio import GDAL_CLOUD_DEFAULTS
 from rasterio.session import AWSSession
 
-
+logger = getLogger(__name__)
 @contextmanager
-def copernicus_read_env(profile_name="copernicus", **kwargs):
+def copernicus_read_env(profile_name="copernicus", force_keys=False, **kwargs):
     """
     Temporary GDAL/AWS environment for reading from Copernicus S3.
     Restores environment after exit.
@@ -39,33 +39,47 @@ def copernicus_read_env(profile_name="copernicus", **kwargs):
     -------------
     """
     old_env = os.environ.copy()
+    original_aws_key_id = os.environ.pop("AWS_ACCESS_KEY_ID", None)
+    original_aws_key_secret = os.environ.pop("AWS_SECRET_ACCESS_KEY", None)
+    original_session = os.environ.pop("AWS_SESSION_TOKEN", None)
     try:
-        # --- your setup ---
         gdal_opts = {**GDAL_CLOUD_DEFAULTS, **kwargs}
-        gdal_opts["GDAL_HTTP_TCP_KEEPALIVE"] = "YES"
-        gdal_opts["AWS_S3_ENDPOINT"] = "eodata.dataspace.copernicus.eu"
-        gdal_opts["AWS_HTTPS"] = "YES"
-        gdal_opts["AWS_VIRTUAL_HOSTING"] = "FALSE"
-        gdal_opts["GDAL_HTTP_UNSAFESSL"] = "YES"
+        gdal_opts.update({
+            "GDAL_HTTP_TCP_KEEPALIVE": "YES",
+            "AWS_S3_ENDPOINT": "eodata.dataspace.copernicus.eu",
+            "AWS_HTTPS": "YES",
+            "AWS_VIRTUAL_HOSTING": "FALSE",
+            "GDAL_HTTP_UNSAFESSL": "YES",
+        })
 
-        # check if ~/.aws/config exists and has copernicus profile
-        if not os.path.exists(os.path.expanduser("~/.aws/config")):
-            # use aws credentials from env vars as fallback
-            copernicus_access_key = os.environ.get("CDSE_AWS_ACCESS_KEY_ID", os.environ.get("AWS_ACCESS_KEY_ID"))
-            copernicus_secret_key = os.environ.get("CDSE_AWS_SECRET_ACCESS_KEY", os.environ.get("AWS_SECRET_ACCESS_KEY"))
-            session = boto3.Session(aws_access_key_id=copernicus_access_key,
-                                    aws_secret_access_key=copernicus_secret_key)
-        else:
-            # Create a boto3 session from profile just for reads
+        use_profile = os.path.exists(os.path.expanduser("~/.aws/config")) and not force_keys
+
+        if use_profile:
+            logger.debug("Using copernicus profile")
             session = boto3.Session(profile_name=profile_name)
-        aws = AWSSession(session)
+        else:
+            logger.debug("Not using copernicus profile pulling keys")
+            copernicus_access_key = os.environ.get("CDSE_AWS_ACCESS_KEY_ID") or original_aws_key_id
+            copernicus_secret_key = os.environ.get("CDSE_AWS_SECRET_ACCESS_KEY") or original_aws_key_secret
 
-        # rio.Env makes GDAL pick up this AWSSession for /vsis3/ reads
+            if not copernicus_access_key or not copernicus_secret_key:
+                raise RuntimeError(
+                    "Copernicus credentials not found. "
+                    "Set CDSE_AWS_ACCESS_KEY_ID and CDSE_AWS_SECRET_ACCESS_KEY "
+                    "or configure ~/.aws/config profile 'copernicus'."
+                )
+
+            session = boto3.Session(
+                aws_access_key_id=copernicus_access_key,
+                aws_secret_access_key=copernicus_secret_key,
+                aws_session_token=original_session,
+            )
+
+        aws = AWSSession(session)
         with rio.Env(aws_session=aws, **gdal_opts):
             yield
 
     finally:
-        # Restore env fully (important if writers rely on original creds)
         os.environ.clear()
         os.environ.update(old_env)
 
@@ -92,10 +106,10 @@ class CopernicusReadAwsStacTask(AwsStacTask):
             items = self.searcher.search(self.area)
             input_data = self.loader.load(items, self.area)
 
-        # ---- PROCESS PHASE (no special creds needed) ----
-        processor_kwargs = (
-            dict(area=self.area) if self.processor.send_area_to_processor else dict()
-        )
+            # ---- PROCESS PHASE (no special creds needed) ----
+            processor_kwargs = (
+                dict(area=self.area) if self.processor.send_area_to_processor else dict()
+            )
         output_data = set_stac_properties(
             input_data,
             self.processor.process(input_data, **processor_kwargs),
