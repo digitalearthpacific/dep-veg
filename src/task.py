@@ -3,6 +3,7 @@ from contextlib import contextmanager
 from logging import getLogger, Logger
 
 import boto3
+import rasterio
 import rasterio as rio
 from dep_tools.stac_utils import set_stac_properties  # wherever this lives
 from dep_tools.task import AwsStacTask
