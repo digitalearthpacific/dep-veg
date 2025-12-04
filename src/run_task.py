@@ -79,7 +79,11 @@ def main(
         str, typer.Option("--datetime", help="Datetime string (e.g. 2024)")
     ] = "2024",
     land_mask: Annotated[
-        str, typer.Option("--land-mask", help="Land mask to use osm, gadm or combined. Default is combined.")
+        str,
+        typer.Option(
+            "--land-mask",
+            help="Land mask to use osm, gadm or combined. Default is combined.",
+        ),
     ] = "combined",
 ) -> None:
 
