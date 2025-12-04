@@ -73,6 +73,9 @@ def main(
     datetime: Annotated[
         str, typer.Option("--datetime", help="Datetime string (e.g. 2024)")
     ] = "2024",
+        osm_land_mask: Annotated[
+            bool, typer.Option("--osm", help="Use OSM land polygons instead of gadm")
+        ] = False
 ) -> None:
 
     log = logging.getLogger(tile_id)
@@ -140,9 +143,13 @@ def main(
         bands=["B04", "B03", "B02", 'observations'],#, "B08"],
         chunks={"x": 1024, "y": 1024}
     )
+    ## This includes:
+    # - loads height model (1GB),
+    # - loads one .pkl file for stats,
+    # - downloading input dataset into numpy array shape [3,h,w] float32
+    processor = VegProcessorKeepNonVegPixels(use_gadm=not osm_land_mask)
 
-    processor = VegProcessorKeepNonVegPixels() ###################### this includes: loads height model (1GB), loads one .pkl file for stats, downloading input dataset into numpy array shape [3,h,w] float32
-
+    # Make sure we pass original client down to s3 writer and stac writer
     dep_client_to_s3 = partial(write_to_s3, client=client)
     # Custom writer so we write multithreaded
     writer = AwsDsCogWriter(itempath, write_multithreaded=True, write_function=dep_client_to_s3)

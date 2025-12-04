@@ -3,14 +3,15 @@ from contextlib import contextmanager
 from logging import getLogger, Logger
 
 import boto3
-import rasterio
 import rasterio as rio
 from dep_tools.stac_utils import set_stac_properties  # wherever this lives
 from dep_tools.task import AwsStacTask
-from odc.loader._rio import GDAL_CLOUD_DEFAULTS, configure_rio, configure_s3_access
+from odc.loader._rio import GDAL_CLOUD_DEFAULTS, configure_rio
 from rasterio.session import AWSSession
 
 logger = getLogger(__name__)
+
+
 @contextmanager
 def copernicus_read_env(profile_name="copernicus", force_keys=False, **kwargs):
     """
@@ -110,7 +111,6 @@ class CopernicusReadAwsStacTask(AwsStacTask):
         # using raserio env probably unnecessary as configure_rio is actually passing down the config to the dask client
 
         configure_rio(cloud_defaults=True, aws={"session": boto_session}, **gdal_opts)
-        self.logger.info("Reading with Copernicus S3 credentials/session.")
         items = self.searcher.search(self.area)
         input_data = self.loader.load(items, self.area)
 
@@ -129,7 +129,6 @@ class CopernicusReadAwsStacTask(AwsStacTask):
 
         # ---- WRITE PHASE (original/default creds restored) ----
         # configure_s3_access(cloud_defaults=True)
-        self.logger.info("Writing with original/default AWS credentials.")
         paths = self.writer.write(output_data, self.id)
 
         if self.stac_creator is not None and self.stac_writer is not None:
