@@ -660,7 +660,7 @@ class VegProcessorKeepNonVegPixels(Processor):
         # ---- to datasets + merge ----
         height_ds = height_da.to_dataset()
         conf_ds = conf_da.to_dataset()
-        out_ds = xr.merge([ height_ds,conf_ds,self.tce_img, output_data])
+        out_ds = xr.merge([ height_ds,conf_ds,self.tce_img, *output_data])
 
         # ---- mask + nodata attrs ----
         out_ds["height"] = out_ds["height"].where(self.mask)
