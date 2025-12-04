@@ -14,8 +14,11 @@ logger = getLogger(__name__)
 @contextmanager
 def copernicus_read_env(profile_name="copernicus", force_keys=False, **kwargs):
     """
+    NOTE: Unfortunately contextlib.contextmanager cannot be nested well with dask delayed functions
+    so this is of limited use inside dask tasks. Leaving for posterity. But feel free to clear
     Temporary GDAL/AWS environment for reading from Copernicus S3.
     Restores environment after exit.
+
     If running in docker/k8s requires copernicus profile to be configured in ~/.aws/config
     [default]
     region = us-west-2
@@ -105,18 +108,17 @@ class CopernicusReadAwsStacTask(AwsStacTask):
         # ---- READ PHASE (temp copernicus session) ----
         aws, boto_session, gdal_opts = get_copernicus_rio_config()
         # using raserio env probably unnecessary as configure_rio is actually passing down the config to the dask client
-        with rasterio.Env(session=aws,
-                          **gdal_opts):
-            configure_rio(cloud_defaults=True, aws={"session": boto_session}, **gdal_opts)
-            self.logger.info("Reading with Copernicus S3 credentials/session.")
-            items = self.searcher.search(self.area)
-            input_data = self.loader.load(items, self.area)
 
-            # ---- PROCESS PHASE (no special creds needed) ----
-            processor_kwargs = (
-                dict(area=self.area) if self.processor.send_area_to_processor else dict()
-            )
-        configure_s3_access(cloud_defaults=True)
+        configure_rio(cloud_defaults=True, aws={"session": boto_session}, **gdal_opts)
+        self.logger.info("Reading with Copernicus S3 credentials/session.")
+        items = self.searcher.search(self.area)
+        input_data = self.loader.load(items, self.area)
+
+        # ---- PROCESS PHASE (no special creds needed) ----
+        processor_kwargs = (
+            dict(area=self.area) if self.processor.send_area_to_processor else dict()
+        )
+        #
         output_data = set_stac_properties(
             input_data,
             self.processor.process(input_data, **processor_kwargs),
@@ -126,6 +128,7 @@ class CopernicusReadAwsStacTask(AwsStacTask):
             output_data = self.post_processor.process(output_data)
 
         # ---- WRITE PHASE (original/default creds restored) ----
+        # configure_s3_access(cloud_defaults=True)
         self.logger.info("Writing with original/default AWS credentials.")
         paths = self.writer.write(output_data, self.id)
 
