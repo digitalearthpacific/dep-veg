@@ -4,12 +4,13 @@ import logging
 import pickle
 import zipfile
 from pathlib import Path
-from typing import Tuple
+from typing import Tuple, Any
 
 import cv2
 import geopandas as gpd
 import matplotlib.pyplot as plt
 import numpy as np
+import pandas as pd
 import rasterio
 import requests
 import torch
@@ -25,12 +26,20 @@ from torchvision.transforms import Normalize, ToTensor
 from tqdm.auto import tqdm
 from xarray import Dataset
 
+# This EPSG code is what we're using for now
+# but it's not ideal, as its not an equal area projection...
+PACIFIC_EPSG = "EPSG:3832"
+
+GADM_UNION_FILE = Path(__file__).parent / "gadm_pacific_union.gpkg"
+
 BATCH_SIZE = 6
 NUM_WORKERS = 0
 PREFETCH_FACTOR = None
 SUPPORTED_TASKS = ["allveg10m", "height10m"]
 IMAGENET_NORMALIZER = Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
-LAND_POLYGONS_URL = "https://osmdata.openstreetmap.de/download/land-polygons-complete-4326.zip"
+LAND_POLYGONS_URL = (
+    "https://osmdata.openstreetmap.de/download/land-polygons-complete-4326.zip"
+)
 
 log = logging.getLogger(f"{__name__}")
 
@@ -47,7 +56,7 @@ def resize_figure(fig, factor=2):
 
 
 def imshow(
-        im, fig=None, ax=None, alpha=1, cmap=None, label="", return_true=False, resize=False
+    im, fig=None, ax=None, alpha=1, cmap=None, label="", return_true=False, resize=False
 ):
     """
     im: np array [c,h,w], value range from 0 to 255
@@ -109,16 +118,16 @@ class PatchDataset(torch.utils.data.Dataset):
     """
 
     def __init__(
-            self,
-            img: np.ndarray,
-            s: int,
-            s1: int,
-            normalizer=None,
-            check_empty_patches=False,
+        self,
+        img: np.ndarray,
+        s: int,
+        s1: int,
+        normalizer=None,
+        check_empty_patches=False,
     ):
         self.img = img
         self.has_alpha = (
-                img.shape[0] == 4
+            img.shape[0] == 4
         )  # if img has 4 channels, means it has alpha mask
         self.s = s
         self.s1 = s1
@@ -145,7 +154,7 @@ class PatchDataset(torch.utils.data.Dataset):
         if check_empty_patches:
             log.info(f"Total {n_all_patches} patches.\nFiltering all-zero patches...")
             for i in tqdm(self.indices):
-                valid_mask = self.img[:, i[0]: i[0] + self.s, i[1]: i[1] + self.s]
+                valid_mask = self.img[:, i[0] : i[0] + self.s, i[1] : i[1] + self.s]
                 if not valid_mask.any():  # if all is zero
                     self.indices.remove(i)
             n_valid_patches = len(self.indices)
@@ -153,7 +162,7 @@ class PatchDataset(torch.utils.data.Dataset):
 
     def load(self, idx):
         i, j = self.indices[idx]
-        x = self.img[:, i: i + self.s, j: j + self.s]
+        x = self.img[:, i : i + self.s, j : j + self.s]
         return x, i, j  # x: nparray [3, s, s] uint8
 
     def __getitem__(self, idx):
@@ -196,7 +205,7 @@ def inference(model, dataloader, n_classes, segmentation_class):
     elif segmentation_class == "height10m":
         result_dtype = torch.float32
 
-    big_out = torch.zeros((n_classes, h, w), device='cpu', dtype=result_dtype)
+    big_out = torch.zeros((n_classes, h, w), device="cpu", dtype=result_dtype)
     model.eval()
     log.info("Finish initiation. Start inferencing...")
     pbar = tqdm(dataloader)
@@ -238,7 +247,7 @@ def inference(model, dataloader, n_classes, segmentation_class):
                     di2 = s if i[k] == h - s else d2
                     dj1 = 0 if j[k] == 0 else d1
                     dj2 = s if j[k] == w - s else d2
-                    big_out[:, i[k] + di1: i[k] + di2, j[k] + dj1: j[k] + dj2] = (
+                    big_out[:, i[k] + di1 : i[k] + di2, j[k] + dj1 : j[k] + dj2] = (
                         copy.deepcopy(out[k][:, di1:di2, dj1:dj2])
                     )
 
@@ -257,7 +266,7 @@ class VegProcessor(Processor):
     send_area_to_processor = False
 
     def __init__(
-            self, ref_stats_filepath="models/traindata_hist_quantile_mean_std(veg_only).pkl"
+        self, ref_stats_filepath="models/traindata_hist_quantile_mean_std(veg_only).pkl"
     ):
         self.allveg_model = torch.jit.load("models/model_allveg10m.pth").cuda()
         self.height_model = torch.jit.load("models/model_height10m.pth").cuda()
@@ -384,7 +393,7 @@ class VegProcessor(Processor):
         return allveg  # [1, h, w], uint8, 0=nodata, 1=non-veg, 2=low-veg, 3=high-veg
 
     def infer_height_estimation(
-            self, img: np.ndarray[np.uint8], standardize=False
+        self, img: np.ndarray[np.uint8], standardize=False
     ) -> np.ndarray:
         # img shape: [3, h, w] uint8
         # steps: 1. Standardize img (optional) - 2. patchify, create dataloader - 3. infer, reassemble to large array
@@ -426,8 +435,9 @@ class VegProcessor(Processor):
             self.mask, ~nonvegmask[0]
         )  # remember self.mask.shape=[h,w]
         nonvegmask = np.repeat(nonvegmask, 3, axis=0)
-        img[
-            nonvegmask] = 0  # IMPORTANT - set all non-veg pixels to 0 so that they don't affect standarization (histogram matching )
+        img[nonvegmask] = (
+            0  # IMPORTANT - set all non-veg pixels to 0 so that they don't affect standarization (histogram matching )
+        )
         # Step 3: infer standardized data with height_model
         log.info("step 3")
         height = self.infer_height_estimation(
@@ -464,10 +474,11 @@ class VegProcessorKeepNonVegPixels(Processor):
     send_area_to_processor = False
 
     def __init__(
-            self,
-            ref_stats_filepath="models/traindata_hist_quantile_mean_std.pkl"
-            , land_polygons_shp='models/land-polygons-complete-4326/land_polygons.shp',
-            use_gadm=True):
+        self,
+        ref_stats_filepath="models/traindata_hist_quantile_mean_std.pkl",
+        land_polygons_shp="models/land-polygons-complete-4326/land_polygons.shp",
+        land_mask_src="combined",
+    ):
         # self.allveg_model = torch.jit.load("models/model_allveg10m.pth").cuda()
         self.height_model = torch.jit.load("models/model_height10m.pth").cuda()
         self.ref_stats_filepath = ref_stats_filepath
@@ -478,7 +489,7 @@ class VegProcessorKeepNonVegPixels(Processor):
         log.info(f"Loaded referenced mean: {self.ref_mean}")
         log.info(f"Loaded referenced std: {self.ref_std}")
         self.land_shp = Path(land_polygons_shp)
-        self.use_gadm = use_gadm
+        self.land_mask_src = land_mask_src
         # set in processing
         self.tce_img = None
         self.img = None
@@ -495,8 +506,9 @@ class VegProcessorKeepNonVegPixels(Processor):
         for i in range(3):
             vmin, vmax = np.quantile(img[i][self.mask], [0.001, 0.99])
             img[i][self.mask] = img[i][self.mask].clip(min=vmin, max=vmax)
-            img[i][self.mask] = cv2.normalize(img[i][self.mask], None, 255, 0, cv2.NORM_MINMAX, cv2.CV_8U).reshape(
-                img[i][self.mask].shape)
+            img[i][self.mask] = cv2.normalize(
+                img[i][self.mask], None, 255, 0, cv2.NORM_MINMAX, cv2.CV_8U
+            ).reshape(img[i][self.mask].shape)
 
         return img  # [3,h,w]
 
@@ -551,21 +563,36 @@ class VegProcessorKeepNonVegPixels(Processor):
 
     def get_land_mask(self, bbox_4326):
         """Fetch either land mask from GADM or OSM and load only bbox.
+        Default return gadm
         """
         # 2) Read only polygons intersecting this bbox (still in 4326)
         # allow for parquet files too
-        if self.use_gadm:
+        if self.land_mask_src == "gadm":
             land = get_gadm_bbox(bbox_4326)
+        elif self.land_mask_src == "osm":
+            land = self._get_land_mask_from_file(bbox_4326)
+        elif self.land_mask_src == "combined":
+            all_polys = pd.concat(
+                [
+                    get_gadm_bbox(bbox_4326),
+                    self._get_land_mask_from_file(bbox=bbox_4326),
+                ]
+            )
+            land = all_polys.dissolve()[["geometry"]]
         else:
-            land_shp_path = Path(self.land_shp)
-            if land_shp_path.suffix.lower() == ".parquet":
-                land = gpd.read_parquet(land_shp_path, bbox=bbox_4326)
-            else:
-                land = gpd.read_file(land_shp_path, bbox=bbox_4326)
+            land = get_gadm_bbox(bbox_4326)
+        return land
+
+    def _get_land_mask_from_file(self, bbox) -> gpd.GeoDataFrame:
+        land_shp_path = Path(self.land_shp)
+        if land_shp_path.suffix.lower() == ".parquet":
+            land = gpd.read_parquet(land_shp_path, bbox=bbox)
+        else:
+            land = gpd.read_file(land_shp_path, bbox=bbox)
         return land
 
     def infer_height_estimation(
-            self, img: np.ndarray[np.uint8], standardize=False
+        self, img: np.ndarray[np.uint8], standardize=False
     ) -> np.ndarray:
         # img shape: [3, h, w] uint8
         # steps: 1. Standardize img (optional) - 2. patchify, create dataloader - 3. infer, reassemble to large array
@@ -589,7 +616,9 @@ class VegProcessorKeepNonVegPixels(Processor):
         )
         return height  # [1, h, w], float32
 
-    def process(self, img: Dataset, use_tce_processing=False, rgb_to_output=False) -> Dataset:
+    def process(
+        self, img: Dataset, use_tce_processing=False, rgb_to_output=False
+    ) -> Dataset:
         # img: [4 = RGB + observations, h, w] dtype float32
         coords = {dim: img.coords[dim] for dim in img.dims}
         geobox = img.odc.geobox
@@ -614,7 +643,7 @@ class VegProcessorKeepNonVegPixels(Processor):
         obs = img[-1]  # obs
 
         log.info("Preprocess input...")
-        self.landmask = landmask.astype('bool')
+        self.landmask = landmask.astype("bool")
         self.mask = self.landmask
         # Step 1: fill NaN=0, convert from uint16 or float to uint8
         # True color actually reduces height slightly
@@ -626,8 +655,8 @@ class VegProcessorKeepNonVegPixels(Processor):
         # Step 2: set all non-land pixels to 0
         # remember self.mask.shape=[h,w]
         invalid_mask = np.repeat(~self.mask[None], 3, axis=0)
-        img[
-            invalid_mask] = 0  # IMPORTANT - set all non-land pixels to 0 so that they don't affect standarization (histogram matching )
+        # IMPORTANT - set all non-land pixels to 0 so that they don't affect standarization (histogram matching )
+        img[invalid_mask] = 0
 
         # Step 3: standardize image then infer it with height_model
         log.info("Infer height")
@@ -639,9 +668,9 @@ class VegProcessorKeepNonVegPixels(Processor):
         obs = np.nan_to_num(obs, nan=0)  # set no-observation from nan to 0
         # Compute local average with a 101x101 kernel
         # confidence = uniform_filter(obs, size=51, mode='constant', cval=0)
-        confidence = uniform_filter(obs, size=51, mode='reflect')
-        confidence = confidence.clip(max=10) / 10 * self.mask.astype('uint8')
-        obs *= self.mask.astype('uint8')  # non-land pixels set to 0 observation
+        confidence = uniform_filter(obs, size=51, mode="reflect")
+        confidence = confidence.clip(max=10) / 10 * self.mask.astype("uint8")
+        obs *= self.mask.astype("uint8")  # non-land pixels set to 0 observation
         # ---- wrap outputs into xr DataArrays ----
         height_da = xr.DataArray(
             height,  # [time, y, x]
@@ -660,7 +689,7 @@ class VegProcessorKeepNonVegPixels(Processor):
         # ---- to datasets + merge ----
         height_ds = height_da.to_dataset()
         conf_ds = conf_da.to_dataset()
-        out_ds = xr.merge([ height_ds,conf_ds,self.tce_img, *output_data])
+        out_ds = xr.merge([height_ds, conf_ds, self.tce_img, *output_data])
 
         # ---- mask + nodata attrs ----
         out_ds["height"] = out_ds["height"].where(self.mask)
@@ -687,7 +716,7 @@ class VegProcessorKeepNonVegPixels(Processor):
 
     @staticmethod
     def apply_rgb_enhancements(
-            red_band: xr.DataArray, green_band: xr.DataArray, blue_band: xr.DataArray
+        red_band: xr.DataArray, green_band: xr.DataArray, blue_band: xr.DataArray
     ) -> xr.DataArray:
         """Apply contrast enhancement and saturation adjustments for RGB."""
         # Constants
@@ -701,7 +730,9 @@ class VegProcessorKeepNonVegPixels(Processor):
             """Clip enc."""
             return value.clip(0, 1)
 
-        def adj(value: xr.DataArray, tx: float, ty: float, max_c: float) -> xr.DataArray:
+        def adj(
+            value: xr.DataArray, tx: float, ty: float, max_c: float
+        ) -> xr.DataArray:
             """Adj."""
             a_ratio = clip_enc(value / max_c)
             numerator = a_ratio * (a_ratio * (tx / max_c + ty - 1) - ty)
@@ -714,7 +745,7 @@ class VegProcessorKeepNonVegPixels(Processor):
         def adj_gamma(value: xr.DataArray) -> xr.DataArray:
             """Adj gamma."""
             g_offset = 0.01
-            g_off_pow = g_offset ** GAMMA
+            g_off_pow = g_offset**GAMMA
             g_off_range = ((1 + g_offset) ** GAMMA) - g_off_pow
             return ((value + g_offset) ** GAMMA - g_off_pow) / g_off_range
 
@@ -723,11 +754,15 @@ class VegProcessorKeepNonVegPixels(Processor):
             return adj_gamma(adj(value, MID_REFLECTANCE, 1, MAX_REFLECTANCE))
 
         def sat_enh(
-                r: xr.DataArray, g: xr.DataArray, b: xr.DataArray
+            r: xr.DataArray, g: xr.DataArray, b: xr.DataArray
         ) -> Tuple[xr.DataArray, xr.DataArray, xr.DataArray]:
             """Sat enh."""
             avg = (r + g + b) / 3.0 * (1 - SATURATION)
-            return (clip_enc(avg + r * SATURATION), clip_enc(avg + g * SATURATION), clip_enc(avg + b * SATURATION))
+            return (
+                clip_enc(avg + r * SATURATION),
+                clip_enc(avg + g * SATURATION),
+                clip_enc(avg + b * SATURATION),
+            )
 
         def s_rgb(c: xr.DataArray) -> xr.DataArray:
             """S rgb."""
@@ -758,7 +793,9 @@ class VegProcessorKeepNonVegPixels(Processor):
 
         # Concatenate with band dimension
         output = xr.concat([r_srgb, g_srgb, b_srgb], dim="band")
-        output = output.assign_coords(band=["red", "green", "blue"])  # clearer than per-array assign
+        output = output.assign_coords(
+            band=["red", "green", "blue"]
+        )  # clearer than per-array assign
 
         # Scale to 0-255 and convert to uint8
         rgb_out = (output * 255).clip(0, 255).astype("uint8")
@@ -773,8 +810,9 @@ class VegProcessorKeepNonVegPixels(Processor):
         return rgb_out
 
 
-def download_and_extract_land_polygons(url: str = LAND_POLYGONS_URL,
-                                       out_dir: str | Path = "land_polygons") -> Path:
+def download_and_extract_land_polygons(
+    url: str = LAND_POLYGONS_URL, out_dir: str | Path = "land_polygons"
+) -> Path:
     """
     Download the OSM land polygons zip and extract it to `out_dir`.
     Returns the path to the main .shp file.
@@ -833,9 +871,9 @@ def geobox_bounds_in_crs(geobox, target_crs="EPSG:4326"):
     return minx, miny, maxx, maxy
 
 
-def rasterize_land_mask_for_geobox(geobox,
-                                   land: gpd.GeoDataFrame,
-                                   all_touched: bool = False) -> np.ndarray:
+def rasterize_land_mask_for_geobox(
+    geobox, land: gpd.GeoDataFrame, all_touched: bool = False
+) -> np.ndarray:
     """
     Given a GeoBox (in EPSG:3832) and a path to the OSM land polygons shapefile
     (in EPSG:4326), return a rasterized mask aligned to the GeoBox:
@@ -897,6 +935,7 @@ def get_mask(im, channel_axis=0, nodata=0):
     )
     return mask
 
+
 def normalize_rgb_to_uint8(rgb):
     """
     Normalize a float32 RGB array to the range [0, 255] and convert to uint8.
@@ -909,8 +948,11 @@ def normalize_rgb_to_uint8(rgb):
     if rgb_max == rgb_min:
         norm_rgb = np.zeros_like(rgb, dtype=np.uint8)
     else:
-        norm_rgb = ((rgb - rgb_min) / (rgb_max - rgb_min) * 255).clip(0, 255).astype(np.uint8)
+        norm_rgb = (
+            ((rgb - rgb_min) / (rgb_max - rgb_min) * 255).clip(0, 255).astype(np.uint8)
+        )
     return norm_rgb
+
 
 # Extract metadata from the xarray Dataset 'data' for saving as raster
 def extract_raster_meta(data):
@@ -948,33 +990,39 @@ def extract_raster_meta(data):
     }
     return meta
 
+
 def save_raster(a, meta, save_path, nbits=8, overwrite=False, **kwargs):
-    '''
+    """
     a: np array [c,h,w] or [h,w]
     meta: dict
     save_path: ends with .tif
     nbits: number of bits to store each pixel. This is very helpful to compress the raster if the value range is small.
     overwrite: option to overwrite existing files
-    '''
+    """
     save_path = Path(save_path)
     save_path_exists = save_path.exists()
     if save_path_exists:
-        print(f'file exists: {save_path}')
+        print(f"file exists: {save_path}")
         if not overwrite:
-            raise Exception(f'file exists: {save_path} and overwrite is set to False. Please set overwrite to True')
-        print(f'Overwriting file...')
+            raise Exception(
+                f"file exists: {save_path} and overwrite is set to False. Please set overwrite to True"
+            )
+        print(f"Overwriting file...")
     if len(a.shape) == 2:
-        a = a[None] #ensure a.shape = [c,h,w]
-    meta['count'] = a.shape[0]
-    meta['height'] = a.shape[1]
-    meta['width'] = a.shape[2]
-    meta['dtype'] = a.dtype
+        a = a[None]  # ensure a.shape = [c,h,w]
+    meta["count"] = a.shape[0]
+    meta["height"] = a.shape[1]
+    meta["width"] = a.shape[2]
+    meta["dtype"] = a.dtype
     try:
-        with rio.open(save_path, 'w', nbits=nbits, **meta, **kwargs) as dest:
+        with rio.open(save_path, "w", nbits=nbits, **meta, **kwargs) as dest:
             for i in range(a.shape[0]):
-                dest.write(a[i], i+1)
+                dest.write(a[i], i + 1)
     except Exception as e:
-        raise Exception(f'Error saving raster to {save_path} error {e}. Check the meta and data shape. Meta: {meta}, data shape: {a.shape}')
+        raise Exception(
+            f"Error saving raster to {save_path} error {e}. Check the meta and data shape. Meta: {meta}, data shape: {a.shape}"
+        )
+
 
 def load_raster(raster_path):
     """
@@ -988,67 +1036,6 @@ def load_raster(raster_path):
         arr = src.read()
         meta = src.meta.copy()
     return arr, meta
-
-from json import loads
-from pathlib import Path
-from typing import Literal, Iterator
-
-import antimeridian
-import geopandas as gpd
-import pandas as pd
-from geopandas import GeoDataFrame, GeoSeries
-from odc.geo import XY, BoundingBox, Geometry
-from odc.geo.gridspec import GridSpec, GeoBox
-from shapely.geometry import shape
-
-# This EPSG code is what we're using for now
-# but it's not ideal, as its not an equal area projection...
-PACIFIC_EPSG = "EPSG:3832"
-
-GADM_FILE = Path(__file__).parent / "gadm_pacific.gpkg"
-GADM_UNION_FILE = Path(__file__).parent / "gadm_pacific_union.gpkg"
-COUNTRIES_AND_CODES = {
-    "American Samoa": "ASM",
-    "Cook Islands": "COK",
-    "Fiji": "FJI",
-    "French Polynesia": "PYF",
-    "Guam": "GUM",
-    "Kiribati": "KIR",
-    "Marshall Islands": "MHL",
-    "Micronesia": "FSM",
-    "Nauru": "NRU",
-    "New Caledonia": "NCL",
-    "Niue": "NIU",
-    "Northern Mariana Islands": "MNP",
-    "Palau": "PLW",
-    "Papua New Guinea": "PNG",
-    "Pitcairn Islands": "PCN",
-    "Solomon Islands": "SLB",
-    "Samoa": "WSM",
-    "Tokelau": "TKL",
-    "Tonga": "TON",
-    "Tuvalu": "TUV",
-    "Vanuatu": "VUT",
-    "Wallis and Futuna": "WLF",
-}
-
-
-def gadm() -> GeoDataFrame:
-    if not GADM_FILE.exists() or not GADM_UNION_FILE.exists():
-        all_polys = pd.concat(
-            [
-                gpd.read_file(
-                    f"https://geodata.ucdavis.edu/gadm/gadm4.1/gpkg/gadm41_{code}.gpkg",
-                    layer="ADM_ADM_0",
-                )
-                for code in COUNTRIES_AND_CODES.values()
-            ]
-        )
-
-        all_polys.to_file(GADM_FILE)
-        all_polys.dissolve()[["geometry"]].to_file(GADM_UNION_FILE)
-
-    return gpd.read_file(GADM_FILE)
 
 
 def get_gadm_bbox(bbox):

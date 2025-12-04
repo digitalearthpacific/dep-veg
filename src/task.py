@@ -50,23 +50,31 @@ def copernicus_read_env(profile_name="copernicus", force_keys=False, **kwargs):
     original_session = os.environ.pop("AWS_SESSION_TOKEN", None)
     try:
         gdal_opts = {**GDAL_CLOUD_DEFAULTS, **kwargs}
-        gdal_opts.update({
-            "GDAL_HTTP_TCP_KEEPALIVE": "YES",
-            "AWS_S3_ENDPOINT": "eodata.dataspace.copernicus.eu",
-            "AWS_HTTPS": "YES",
-            "AWS_VIRTUAL_HOSTING": "FALSE",
-            "GDAL_HTTP_UNSAFESSL": "YES",
-        })
+        gdal_opts.update(
+            {
+                "GDAL_HTTP_TCP_KEEPALIVE": "YES",
+                "AWS_S3_ENDPOINT": "eodata.dataspace.copernicus.eu",
+                "AWS_HTTPS": "YES",
+                "AWS_VIRTUAL_HOSTING": "FALSE",
+                "GDAL_HTTP_UNSAFESSL": "YES",
+            }
+        )
 
-        use_profile = os.path.exists(os.path.expanduser("~/.aws/config")) and not force_keys
+        use_profile = (
+            os.path.exists(os.path.expanduser("~/.aws/config")) and not force_keys
+        )
 
         if use_profile:
             logger.debug("Using copernicus profile")
             session = boto3.Session(profile_name=profile_name)
         else:
             logger.debug("Not using copernicus profile pulling keys")
-            copernicus_access_key = os.environ.get("CDSE_AWS_ACCESS_KEY_ID") or original_aws_key_id
-            copernicus_secret_key = os.environ.get("CDSE_AWS_SECRET_ACCESS_KEY") or original_aws_key_secret
+            copernicus_access_key = (
+                os.environ.get("CDSE_AWS_ACCESS_KEY_ID") or original_aws_key_id
+            )
+            copernicus_secret_key = (
+                os.environ.get("CDSE_AWS_SECRET_ACCESS_KEY") or original_aws_key_secret
+            )
 
             if not copernicus_access_key or not copernicus_secret_key:
                 raise RuntimeError(
@@ -96,11 +104,11 @@ class CopernicusReadAwsStacTask(AwsStacTask):
     """
 
     def __init__(
-            self,
-            *args,
-            copernicus_profile="copernicus",
-            force_keys=False,
-            **kwargs,
+        self,
+        *args,
+        copernicus_profile="copernicus",
+        force_keys=False,
+        **kwargs,
     ):
         super().__init__(*args, **kwargs)
         self.copernicus_profile = copernicus_profile
@@ -162,7 +170,9 @@ def get_copernicus_rio_config(profile_name="copernicus", force_keys=False):
         # specific CDSE keys or fallback to standard AWS keys
         access_key = os.environ.get("CDSE_AWS_ACCESS_KEY_ID")
         secret_key = os.environ.get("CDSE_AWS_SECRET_ACCESS_KEY")
-        boto_session = boto3.Session(aws_access_key_id=access_key, aws_secret_access_key=secret_key)
+        boto_session = boto3.Session(
+            aws_access_key_id=access_key, aws_secret_access_key=secret_key
+        )
 
     if not access_key or not secret_key:
         raise RuntimeError(

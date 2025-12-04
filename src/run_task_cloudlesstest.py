@@ -22,7 +22,7 @@ from typing_extensions import Annotated
 from utils import VegProcessorKeepNonVegPixels
 from dotenv import load_dotenv
 
-load_dotenv('.env')  # finds .env automatically
+load_dotenv(".env")  # finds .env automatically
 
 
 import boto3
@@ -141,12 +141,14 @@ def main(
     )
 
     loader = OdcLoader(
-        bands=["B04", "B03", "B02", 'observations'],#, "B08"],
-        chunks={"x": 1024, "y": 1024}
+        bands=["B04", "B03", "B02", "observations"],  # , "B08"],
+        chunks={"x": 1024, "y": 1024},
     )
 
-    processor = VegProcessorKeepNonVegPixels() ###################### this includes: loads height model (1GB), loads one .pkl file for stats, downloading input dataset into numpy array shape [3,h,w] float32
-    log.info('processor loaded')
+    processor = (
+        VegProcessorKeepNonVegPixels()
+    )  ###################### this includes: loads height model (1GB), loads one .pkl file for stats, downloading input dataset into numpy array shape [3,h,w] float32
+    log.info("processor loaded")
     # Custom writer so we write multithreaded
     writer = AwsDsCogWriter(itempath, write_multithreaded=True)
 
