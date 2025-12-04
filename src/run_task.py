@@ -1,5 +1,7 @@
 # from logging import INFO, Formatter, Logger, StreamHandler, getLogger
 import logging
+import os
+from functools import partial
 from pathlib import Path
 from zipfile import ZipFile
 
@@ -7,19 +9,25 @@ import boto3
 import requests
 import typer
 from dask.distributed import Client
-from dep_tools.aws import object_exists
+from dep_tools.aws import object_exists, write_to_s3
 from dep_tools.exceptions import EmptyCollectionError
 from dep_tools.grids import PACIFIC_GRID_10
 from dep_tools.loaders import OdcLoader
-from dep_tools.namers import S3ItemPath
+from dep_tools.namers import S3ItemPath, LocalPath
 from dep_tools.searchers import PystacSearcher
 from dep_tools.stac_utils import StacCreator
-from dep_tools.task import AwsStacTask as Task
-from dep_tools.writers import AwsDsCogWriter
+
+# from dep_tools.task import AwsStacTask as Task
+from task import CopernicusReadAwsStacTask as Task
+from dep_tools.writers import AwsDsCogWriter, LocalDsCogWriter
 from odc.stac import configure_s3_access
 from typing_extensions import Annotated
 
-from utils import VegProcessorKeepNonVegPixels, rasterize_land_mask_for_geobox
+from utils import (
+    VegProcessorKeepNonVegPixels,
+    rasterize_land_mask_for_geobox,
+    download_and_extract_land_polygons,
+)
 
 # Configure logging ONCE here (root logger)
 logging.basicConfig(
@@ -70,6 +78,13 @@ def main(
     datetime: Annotated[
         str, typer.Option("--datetime", help="Datetime string (e.g. 2024)")
     ] = "2024",
+    land_mask: Annotated[
+        str,
+        typer.Option(
+            "--land-mask",
+            help="Land mask to use osm, gadm or combined. Default is combined.",
+        ),
+    ] = "combined",
 ) -> None:
 
     log = logging.getLogger(tile_id)
@@ -84,8 +99,9 @@ def main(
 
     # Make sure we can access S3
     log.info("Configuring S3 access")
-    configure_s3_access(cloud_defaults=True)
-    client = boto3.client("s3")
+    configure_s3_access(cloud_defaults=True, region_name="ap-southeast-2")
+    client = boto3.client("s3", region_name="ap-southeast-2")
+    # show client information
 
     itempath = S3ItemPath(
         bucket=output_bucket,
@@ -133,15 +149,21 @@ def main(
     )
 
     loader = OdcLoader(
-        bands=["B04", "B03", "B02", 'observations'],#, "B08"],
-        chunks={"x": 1024, "y": 1024}
+        bands=["B04", "B03", "B02", "observations"],  # , "B08"],
+        chunks={"x": 1024, "y": 1024},
     )
+    ## This includes:
+    # - loads height model (1GB),
+    # - loads one .pkl file for stats,
+    # - downloading input dataset into numpy array shape [3,h,w] float32
+    processor = VegProcessorKeepNonVegPixels(land_mask_src=land_mask)
 
-    processor = VegProcessorKeepNonVegPixels() ###################### this includes: loads height model (1GB), loads one .pkl file for stats, downloading input dataset into numpy array shape [3,h,w] float32
-
+    # Make sure we pass original client down to s3 writer and stac writer
+    dep_client_to_s3 = partial(write_to_s3, client=client)
     # Custom writer so we write multithreaded
-    writer = AwsDsCogWriter(itempath, write_multithreaded=True)
-
+    writer = AwsDsCogWriter(
+        itempath, write_multithreaded=True, write_function=dep_client_to_s3
+    )
     # STAC making thing
     stac_creator = StacCreator(
         itempath=itempath,
@@ -149,6 +171,7 @@ def main(
         remote=True,
         make_hrefs_https=True,
         with_raster=True,
+        write_function=dep_client_to_s3,
     )
 
     try:

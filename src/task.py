@@ -7,15 +7,20 @@ import rasterio
 import rasterio as rio
 from dep_tools.stac_utils import set_stac_properties  # wherever this lives
 from dep_tools.task import AwsStacTask
-from odc.loader._rio import GDAL_CLOUD_DEFAULTS, configure_rio, configure_s3_access
+from odc.loader._rio import GDAL_CLOUD_DEFAULTS, configure_rio
 from rasterio.session import AWSSession
 
 logger = getLogger(__name__)
+
+
 @contextmanager
 def copernicus_read_env(profile_name="copernicus", force_keys=False, **kwargs):
     """
+    NOTE: Unfortunately contextlib.contextmanager cannot be nested well with dask delayed functions
+    so this is of limited use inside dask tasks. Leaving for posterity. But feel free to clear
     Temporary GDAL/AWS environment for reading from Copernicus S3.
     Restores environment after exit.
+
     If running in docker/k8s requires copernicus profile to be configured in ~/.aws/config
     [default]
     region = us-west-2
@@ -45,23 +50,31 @@ def copernicus_read_env(profile_name="copernicus", force_keys=False, **kwargs):
     original_session = os.environ.pop("AWS_SESSION_TOKEN", None)
     try:
         gdal_opts = {**GDAL_CLOUD_DEFAULTS, **kwargs}
-        gdal_opts.update({
-            "GDAL_HTTP_TCP_KEEPALIVE": "YES",
-            "AWS_S3_ENDPOINT": "eodata.dataspace.copernicus.eu",
-            "AWS_HTTPS": "YES",
-            "AWS_VIRTUAL_HOSTING": "FALSE",
-            "GDAL_HTTP_UNSAFESSL": "YES",
-        })
+        gdal_opts.update(
+            {
+                "GDAL_HTTP_TCP_KEEPALIVE": "YES",
+                "AWS_S3_ENDPOINT": "eodata.dataspace.copernicus.eu",
+                "AWS_HTTPS": "YES",
+                "AWS_VIRTUAL_HOSTING": "FALSE",
+                "GDAL_HTTP_UNSAFESSL": "YES",
+            }
+        )
 
-        use_profile = os.path.exists(os.path.expanduser("~/.aws/config")) and not force_keys
+        use_profile = (
+            os.path.exists(os.path.expanduser("~/.aws/config")) and not force_keys
+        )
 
         if use_profile:
             logger.debug("Using copernicus profile")
             session = boto3.Session(profile_name=profile_name)
         else:
             logger.debug("Not using copernicus profile pulling keys")
-            copernicus_access_key = os.environ.get("CDSE_AWS_ACCESS_KEY_ID") or original_aws_key_id
-            copernicus_secret_key = os.environ.get("CDSE_AWS_SECRET_ACCESS_KEY") or original_aws_key_secret
+            copernicus_access_key = (
+                os.environ.get("CDSE_AWS_ACCESS_KEY_ID") or original_aws_key_id
+            )
+            copernicus_secret_key = (
+                os.environ.get("CDSE_AWS_SECRET_ACCESS_KEY") or original_aws_key_secret
+            )
 
             if not copernicus_access_key or not copernicus_secret_key:
                 raise RuntimeError(
@@ -91,11 +104,11 @@ class CopernicusReadAwsStacTask(AwsStacTask):
     """
 
     def __init__(
-            self,
-            *args,
-            copernicus_profile="copernicus",
-            force_keys=False,
-            **kwargs,
+        self,
+        *args,
+        copernicus_profile="copernicus",
+        force_keys=False,
+        **kwargs,
     ):
         super().__init__(*args, **kwargs)
         self.copernicus_profile = copernicus_profile
@@ -105,10 +118,8 @@ class CopernicusReadAwsStacTask(AwsStacTask):
         # ---- READ PHASE (temp copernicus session) ----
         aws, boto_session, gdal_opts = get_copernicus_rio_config()
         # using raserio env probably unnecessary as configure_rio is actually passing down the config to the dask client
-        # with rasterio.Env(session=aws,
-        #                   **gdal_opts):
-        configure_rio(verbose=True, cloud_defaults=True, aws={"session": boto_session}, **gdal_opts)
-        self.logger.info("Reading with Copernicus S3 credentials/session.")
+
+        configure_rio(cloud_defaults=True, aws={"session": boto_session}, **gdal_opts)
         items = self.searcher.search(self.area)
         input_data = self.loader.load(items, self.area)
 
@@ -116,7 +127,7 @@ class CopernicusReadAwsStacTask(AwsStacTask):
         processor_kwargs = (
             dict(area=self.area) if self.processor.send_area_to_processor else dict()
         )
-        # configure_s3_access(cloud_defaults=True)
+        #
         output_data = set_stac_properties(
             input_data,
             self.processor.process(input_data, **processor_kwargs),
@@ -126,7 +137,7 @@ class CopernicusReadAwsStacTask(AwsStacTask):
             output_data = self.post_processor.process(output_data)
 
         # ---- WRITE PHASE (original/default creds restored) ----
-        self.logger.info("Writing with original/default AWS credentials.")        
+        # configure_s3_access(cloud_defaults=True)
         paths = self.writer.write(output_data, self.id)
 
         if self.stac_creator is not None and self.stac_writer is not None:
@@ -159,7 +170,9 @@ def get_copernicus_rio_config(profile_name="copernicus", force_keys=False):
         # specific CDSE keys or fallback to standard AWS keys
         access_key = os.environ.get("CDSE_AWS_ACCESS_KEY_ID")
         secret_key = os.environ.get("CDSE_AWS_SECRET_ACCESS_KEY")
-        boto_session = boto3.Session(aws_access_key_id=access_key, aws_secret_access_key=secret_key)
+        boto_session = boto3.Session(
+            aws_access_key_id=access_key, aws_secret_access_key=secret_key
+        )
 
     if not access_key or not secret_key:
         raise RuntimeError(
