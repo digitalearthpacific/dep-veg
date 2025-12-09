@@ -1,9 +1,10 @@
 ## Vegetation Height Estimation Product for the Pacific Region
 
-Processor is at src/utils.py/VegProcessor
+Processor is at src/utils.py/VegProcessorKeepNonVegPixels
 
 `python src/run_task.py --tile-id 45,55 --version 0.0.0 --output-bucket dep-public-staging --collection-url-root https://stac.staging.digitalearthpacific.org/collections --datetime 2022`
 
+NOTE: datetime can be a year or a period between years (2023-2024) or a specific date (2024-10-01). Data is only available at quarterly start dates. If data isn't available, the code simply exits.
 
 ## workflow to run 
 - In Production:
@@ -168,4 +169,4 @@ https://us-west-2.console.aws.amazon.com/s3/upload/dep-public-staging?region=us-
 
 current model download link: 
 
-https://dep-public-staging.s3.us-west-2.amazonaws.com/dep_s2_vegheight/models/dep-veg-models.zip
+https://dep-public-staging.s3.us-west-2.amazonaws.com/dep_s2_vegheight/models/dep-veg-model-v1.zip
