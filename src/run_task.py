@@ -19,20 +19,22 @@ from dep_tools.stac_utils import StacCreator
 
 # from dep_tools.task import AwsStacTask as Task
 from task import CopernicusReadAwsStacTask as Task
-from dep_tools.writers import AwsDsCogWriter, LocalDsCogWriter
+from dep_tools.writers import AwsDsCogWriter, LocalDsCogWriter, AwsStacWriter
 from odc.stac import configure_s3_access
 from typing_extensions import Annotated
 
 from utils import (
     VegProcessorKeepNonVegPixels,
     rasterize_land_mask_for_geobox,
-    download_and_extract_land_polygons,
+    download_and_extract_land_polygons, CustomAwsStacWriter,
 )
-
+boto3_logger = logging.getLogger('botocore')
+boto3_logger.setLevel(logging.WARNING)
 # Configure logging ONCE here (root logger)
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s | %(name)s | %(levelname)s | %(message)s"
 )
+
 
 
 def main(
@@ -113,7 +115,8 @@ def main(
     # Make sure we can access S3
     log.info("Configuring S3 access")
     configure_s3_access(profile=profile, cloud_defaults=True)
-    client = boto3.client("s3")
+    session = boto3.Session(profile_name=profile)
+    client = session.client("s3")
     # show client information
 
     itempath = S3ItemPath(
@@ -183,7 +186,10 @@ def main(
         remote=True,
         make_hrefs_https=True,
         with_raster=True,
-        write_function=dep_client_to_s3,
+    )
+    stac_writer = CustomAwsStacWriter(
+        itempath=itempath,
+        write_stac_function=dep_client_to_s3
     )
 
     try:
@@ -197,6 +203,7 @@ def main(
             writer=writer,
             logger=log,
             stac_creator=stac_creator,
+            stac_writer=stac_writer
         ).run()
     except EmptyCollectionError:
         log.info("No items found for this tile")

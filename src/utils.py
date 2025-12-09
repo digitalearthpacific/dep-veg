@@ -15,8 +15,11 @@ import rasterio
 import requests
 import torch
 import xarray as xr
+from dep_tools.aws import write_to_s3
 from dep_tools.grids import COUNTRIES_AND_CODES
+from dep_tools.namers import S3ItemPath
 from dep_tools.processors import Processor
+from dep_tools.writers import StacWriter
 from pyproj import CRS, Transformer
 from rasterio import rio
 from rasterio.features import rasterize
@@ -1074,4 +1077,18 @@ def load_raster(raster_path):
     return arr, meta
 
 
+
+class CustomAwsStacWriter(StacWriter):
+    def __init__(
+        self,
+        itempath: S3ItemPath,
+        **kwargs,
+    ):
+        write_stac_function= kwargs.pop("write_stac_function") or write_to_s3
+        super().__init__(
+            itempath=itempath,
+            write_stac_function=write_stac_function,
+            bucket=itempath.bucket,
+            **kwargs,
+        )
 
