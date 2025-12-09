@@ -28,6 +28,7 @@ def test_get_copernicus_rio_config_uses_cdse_keys_not_default(monkeypatch, env_k
     (when no profile) and that these are different from AWS_* defaults.
     """
     import importlib
+
     mod = importlib.import_module(MODULE_PATH)
 
     # Force "no profile" path
@@ -59,7 +60,9 @@ def test_get_copernicus_rio_config_uses_cdse_keys_not_default(monkeypatch, env_k
 
     # Sanity: defaults and CDSE creds are distinct
     assert os.environ["AWS_ACCESS_KEY_ID"] != os.environ["CDSE_AWS_ACCESS_KEY_ID"]
-    assert os.environ["AWS_SECRET_ACCESS_KEY"] != os.environ["CDSE_AWS_SECRET_ACCESS_KEY"]
+    assert (
+        os.environ["AWS_SECRET_ACCESS_KEY"] != os.environ["CDSE_AWS_SECRET_ACCESS_KEY"]
+    )
 
     # Basic shape of config
     assert "AWS_S3_ENDPOINT" in cfg
@@ -74,6 +77,7 @@ def test_run_phase_separation_and_restore(monkeypatch, env_keys):
       - AWS_* env not changed by read phase
     """
     import importlib
+
     mod = importlib.import_module(MODULE_PATH)
 
     events = []
@@ -81,15 +85,19 @@ def test_run_phase_separation_and_restore(monkeypatch, env_keys):
     # ---- Patch get_copernicus_rio_config to return a known copernicus aws object ----
     copernicus_aws = object()
     gdal_opts = {"AWS_S3_ENDPOINT": "eodata.dataspace.copernicus.eu"}
-    monkeypatch.setattr(mod, "get_copernicus_rio_config", lambda **_: (copernicus_aws, gdal_opts))
+    monkeypatch.setattr(
+        mod, "get_copernicus_rio_config", lambda **_: (copernicus_aws, gdal_opts)
+    )
 
     # ---- Patch rasterio.Env to record enter/exit ----
     class FakeEnv:
         def __init__(self, *args, **kwargs):
             pass
+
         def __enter__(self):
             events.append("env_enter")
             return self
+
         def __exit__(self, exc_type, exc, tb):
             events.append("env_exit")
             return False
@@ -97,27 +105,45 @@ def test_run_phase_separation_and_restore(monkeypatch, env_keys):
     monkeypatch.setattr(mod.rasterio, "Env", FakeEnv)
 
     # ---- Patch configure_rio / configure_s3_access ----
-    configure_rio_mock = MagicMock(side_effect=lambda *a, **k: events.append(("configure_rio", k)))
-    configure_s3_mock = MagicMock(side_effect=lambda *a, **k: events.append(("configure_s3_access", k)))
+    configure_rio_mock = MagicMock(
+        side_effect=lambda *a, **k: events.append(("configure_rio", k))
+    )
+    configure_s3_mock = MagicMock(
+        side_effect=lambda *a, **k: events.append(("configure_s3_access", k))
+    )
     monkeypatch.setattr(mod, "configure_rio", configure_rio_mock)
     monkeypatch.setattr(mod, "configure_s3_access", configure_s3_mock)
 
     # ---- Patch set_stac_properties to be transparent ----
-    monkeypatch.setattr(mod, "set_stac_properties", lambda input_d, processed_d: processed_d)
+    monkeypatch.setattr(
+        mod, "set_stac_properties", lambda input_d, processed_d: processed_d
+    )
 
     # ---- Build a task with mocked components ----
-    searcher = SimpleNamespace(search=MagicMock(side_effect=lambda area: events.append("search") or ["item"]))
-    loader = SimpleNamespace(load=MagicMock(side_effect=lambda items, area: events.append("load") or "input_data"))
+    searcher = SimpleNamespace(
+        search=MagicMock(side_effect=lambda area: events.append("search") or ["item"])
+    )
+    loader = SimpleNamespace(
+        load=MagicMock(
+            side_effect=lambda items, area: events.append("load") or "input_data"
+        )
+    )
 
     processor = SimpleNamespace(
         send_area_to_processor=True,
-        process=MagicMock(side_effect=lambda input_data, **kw: events.append(("process", kw)) or "processed_data")
+        process=MagicMock(
+            side_effect=lambda input_data, **kw: events.append(("process", kw))
+            or "processed_data"
+        ),
     )
 
-    writer = SimpleNamespace(write=MagicMock(side_effect=lambda data, task_id: events.append("write") or ["s3://out"]))
+    writer = SimpleNamespace(
+        write=MagicMock(
+            side_effect=lambda data, task_id: events.append("write") or ["s3://out"]
+        )
+    )
 
     task = mod.CopernicusReadAwsStacTask(
-
         id="task-1",
         itempath=MagicMock(),
         area="area-1",
@@ -156,8 +182,12 @@ def test_run_phase_separation_and_restore(monkeypatch, env_keys):
     assert events.index("search") < events.index("env_exit")
     assert events.index("load") < events.index("env_exit")
     assert events.index(("process", {"area": "area-1"})) < events.index("env_exit")
-    assert events.index("env_exit") < events.index(("configure_s3_access", {"cloud_defaults": True}))
-    assert events.index(("configure_s3_access", {"cloud_defaults": True})) < events.index("write")
+    assert events.index("env_exit") < events.index(
+        ("configure_s3_access", {"cloud_defaults": True})
+    )
+    assert events.index(
+        ("configure_s3_access", {"cloud_defaults": True})
+    ) < events.index("write")
 
     # ---- Assertions: default AWS env still present (not mutated by read) ----
     assert os.environ["AWS_ACCESS_KEY_ID"] == orig_env["AWS_ACCESS_KEY_ID"]
@@ -165,4 +195,6 @@ def test_run_phase_separation_and_restore(monkeypatch, env_keys):
 
     # ---- Sanity: CDSE and AWS creds are different during the run ----
     assert os.environ["AWS_ACCESS_KEY_ID"] != os.environ["CDSE_AWS_ACCESS_KEY_ID"]
-    assert os.environ["AWS_SECRET_ACCESS_KEY"] != os.environ["CDSE_AWS_SECRET_ACCESS_KEY"]
+    assert (
+        os.environ["AWS_SECRET_ACCESS_KEY"] != os.environ["CDSE_AWS_SECRET_ACCESS_KEY"]
+    )

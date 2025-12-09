@@ -277,15 +277,15 @@ class VegProcessor(Processor):
         log.info(f"Loaded referenced std: {self.ref_std}")
 
     def preprocess(self, img: np.ndarray) -> np.ndarray:
-        '''fill nan to 0 in img -> get mask of pixels that have all RGB=0 -> collapse to range 0-255 with quantile [0.001, 0.99] channel-wise
-        -> set all pixels in mask back to 0 again 
+        """fill nan to 0 in img -> get mask of pixels that have all RGB=0 -> collapse to range 0-255 with quantile [0.001, 0.99] channel-wise
+        -> set all pixels in mask back to 0 again
 
         Args:
             img (np.ndarray size [3(RGB) or 4(RGBA), h, w]): the raw image loaded from xdataset
 
         Returns:
             np.ndarray size [3, h, w]: the processed image
-        '''
+        """
         # img.shape = [3,9600,9600] dtype uint16
         # replace nan with zero
         img = np.nan_to_num(img, nan=0)
@@ -483,7 +483,7 @@ class VegProcessorKeepNonVegPixels(Processor):
         osm_land_polygons_file="models/land-polygons-complete-4326/land_polygons.shp",
         gadm_land_polygons_file="models/gadm_pacific_union.gpkg",
         land_mask_src="combined",
-        testrun=False
+        testrun=False,
     ):
         # self.allveg_model = torch.jit.load("models/model_allveg10m.pth").cuda()
         self.height_model = torch.jit.load("models/model_height10m.pth").cuda()
@@ -507,8 +507,8 @@ class VegProcessorKeepNonVegPixels(Processor):
         self.testrun = testrun
 
     def preprocess(self, img: np.ndarray) -> np.ndarray:
-        '''fill nan to 0 in img -> get mask of pixels that have all RGB=0 -> collapse to range 0-255 with quantile [0.001, 0.99] channel-wise
-        -> set all pixels in mask back to 0 again 
+        """fill nan to 0 in img -> get mask of pixels that have all RGB=0 -> collapse to range 0-255 with quantile [0.001, 0.99] channel-wise
+        -> set all pixels in mask back to 0 again
 
         Args:
             img (np.ndarray size [3(RGB) or 4(RGBA), h, w]): the raw image loaded from xdataset
@@ -516,7 +516,7 @@ class VegProcessorKeepNonVegPixels(Processor):
         Returns:
             np.ndarray size [3, h, w]: the processed image
             also registered self.mask
-        '''
+        """
         # img = img.to_array().squeeze().values # took 46s
         # img.shape = [3,9600,9600] dtype uint16
 
@@ -557,7 +557,7 @@ class VegProcessorKeepNonVegPixels(Processor):
         img = img * self.ref_std + self.ref_mean
 
         img = img.round().clip(min=0, max=255).astype("uint8")
-        img[np.repeat(~self.mask[None], 3, axis=0)] = 0 # reset masked pixels to 0
+        img[np.repeat(~self.mask[None], 3, axis=0)] = 0  # reset masked pixels to 0
         return img
 
     def patchify(self, img: np.ndarray, s: int, s1: int) -> None:
@@ -594,7 +594,7 @@ class VegProcessorKeepNonVegPixels(Processor):
             all_polys = pd.concat(
                 [
                     get_gadm_bbox(bbox_4326, self.gadm_land_polygons_file),
-                    get_osm_bbox(bbox_4326, self.osm_land_polygons_file)
+                    get_osm_bbox(bbox_4326, self.osm_land_polygons_file),
                 ]
             )
             landpolygon = all_polys.dissolve()[["geometry"]]
@@ -650,7 +650,7 @@ class VegProcessorKeepNonVegPixels(Processor):
         bbox_4326 = geobox_bounds_in_crs(geobox, target_crs="EPSG:4326")
         landpolygon = self.get_land_mask(bbox_4326)
         landmask = rasterize_land_mask_for_geobox(geobox, landpolygon)  # [9600,9600]
-        
+
         img = img.to_array().squeeze().values
         obs = img[-1]  # obs
 
@@ -824,6 +824,7 @@ class VegProcessorKeepNonVegPixels(Processor):
         rgb_out = rgb_out.rename("true_color")
         return rgb_out
 
+
 def get_osm_bbox(bbox, osm_polygons_file) -> gpd.GeoDataFrame:
     if osm_polygons_file.suffix.lower() == ".parquet":
         box = gpd.read_parquet(osm_polygons_file, bbox=bbox)
@@ -831,9 +832,10 @@ def get_osm_bbox(bbox, osm_polygons_file) -> gpd.GeoDataFrame:
         box = gpd.read_file(osm_polygons_file, bbox=bbox)
     return box
 
+
 def get_gadm_bbox(bbox, gadm_polygon_file):
     if not gadm_polygon_file.exists():
-        log.info(f'Downloading GADM land data to {gadm_polygon_file}...')
+        log.info(f"Downloading GADM land data to {gadm_polygon_file}...")
         all_polys = pd.concat(
             [
                 gpd.read_file(
@@ -849,7 +851,8 @@ def get_gadm_bbox(bbox, gadm_polygon_file):
 
 
 def download_and_extract_land_polygons(
-    url: str = "https://osmdata.openstreetmap.de/download/land-polygons-complete-4326.zip", out_dir: str | Path = "land_polygons"
+    url: str = "https://osmdata.openstreetmap.de/download/land-polygons-complete-4326.zip",
+    out_dir: str | Path = "land_polygons",
 ) -> Path:
     """
     Download the OSM land polygons zip and extract it to `out_dir`.
@@ -1075,14 +1078,13 @@ def load_raster(raster_path):
     return arr, meta
 
 
-
 class CustomAwsStacWriter(StacWriter):
     def __init__(
         self,
         itempath: S3ItemPath,
         **kwargs,
     ):
-        write_stac_function= kwargs.pop("write_stac_function") or write_to_s3
+        write_stac_function = kwargs.pop("write_stac_function") or write_to_s3
         super().__init__(
             itempath=itempath,
             write_stac_function=write_stac_function,
@@ -1090,8 +1092,10 @@ class CustomAwsStacWriter(StacWriter):
             **kwargs,
         )
 
+
 from datetime import date
 import re
+
 
 def quarter_start_dates(year_or_period: str):
     """
@@ -1109,10 +1113,10 @@ def quarter_start_dates(year_or_period: str):
     # if a date, do nothing
     if is_date(s):
         return [s]
-    
+
     # Match either "YYYY" or "YYYY-YYYY" with optional whitespace around hyphen
     m_single = re.fullmatch(r"(\d{4})", s)
-    m_range  = re.fullmatch(r"(\d{4})\s*-\s*(\d{4})", s)
+    m_range = re.fullmatch(r"(\d{4})\s*-\s*(\d{4})", s)
 
     if m_single:
         start_year = end_year = int(m_single.group(1))
@@ -1131,7 +1135,8 @@ def quarter_start_dates(year_or_period: str):
             out.append(date(y, m, 1).isoformat())
     return out
 
-def is_date(t:str):
+
+def is_date(t: str):
     """
     Returns True if t matches the YYYY-MM-DD format, else False.
     """

@@ -26,15 +26,16 @@ from typing_extensions import Annotated
 from utils import (
     VegProcessorKeepNonVegPixels,
     CustomAwsStacWriter,
-    is_date, quarter_start_dates
+    is_date,
+    quarter_start_dates,
 )
-boto3_logger = logging.getLogger('botocore')
+
+boto3_logger = logging.getLogger("botocore")
 boto3_logger.setLevel(logging.WARNING)
 # Configure logging ONCE here (root logger)
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s | %(name)s | %(levelname)s | %(message)s"
 )
-
 
 
 def main(
@@ -89,8 +90,11 @@ def main(
     ] = "combined",
     testrun: Annotated[
         bool,
-        typer.Option("--testrun/--no-testrun", help="Testrun: run without model inferencing to test data reading/writing"),
-    ] = False
+        typer.Option(
+            "--testrun/--no-testrun",
+            help="Testrun: run without model inferencing to test data reading/writing",
+        ),
+    ] = False,
 ) -> None:
     log = logging.getLogger(tile_id)
 
@@ -100,14 +104,18 @@ def main(
     catalog = "https://stac.dataspace.copernicus.eu/v1"
     collection = "sentinel-2-global-mosaics"
 
-    assert ((collection_url_root == 'https://stac.digitalearthpacific.org/collections' and output_bucket=='dep-public-data') or
-            (collection_url_root == 'https://stac.staging.digitalearthpacific.io/collections' and output_bucket=='dep-public-staging')
-    ), f'output_bucket={output_bucket} and collection_url_root={collection_url_root} not matched. Check the python run_task.py command'
+    assert (
+        collection_url_root == "https://stac.digitalearthpacific.org/collections"
+        and output_bucket == "dep-public-data"
+    ) or (
+        collection_url_root == "https://stac.staging.digitalearthpacific.io/collections"
+        and output_bucket == "dep-public-staging"
+    ), f"output_bucket={output_bucket} and collection_url_root={collection_url_root} not matched. Check the python run_task.py command"
 
-    if 'staging' in collection_url_root:
-        profile = 'staging'
+    if "staging" in collection_url_root:
+        profile = "staging"
     else:
-        profile = 'prod'
+        profile = "prod"
 
     # Make sure we can access S3
     log.info("Configuring S3 access")
@@ -139,8 +147,8 @@ def main(
     # - downloading input dataset into numpy array shape [3,h,w] float32
     processor = VegProcessorKeepNonVegPixels(land_mask_src=land_mask, testrun=testrun)
 
-    dates = quarter_start_dates(datetime)    
-    log.info(f'Running inference for the following dates: {dates}')
+    dates = quarter_start_dates(datetime)
+    log.info(f"Running inference for the following dates: {dates}")
     # ---- Main loop across dates ----
     for datetime in dates:
         try:
@@ -169,9 +177,9 @@ def main(
             )
             items = searcher.search(geobox)
             if len(items) == 0:
-                log.info(f'Image not found for this date {datetime}')
+                log.info(f"Image not found for this date {datetime}")
                 continue
-            
+
             # tile_id is a string like "45,55"
             stac_document = itempath.stac_path(tile_id)
             log.info(
@@ -179,12 +187,12 @@ def main(
             )
 
             # If we don't want to overwrite, and the destination file already exists, skip it
-            if not overwrite and object_exists(output_bucket, stac_document, client=client):
+            if not overwrite and object_exists(
+                output_bucket, stac_document, client=client
+            ):
                 log.info(f"Item already exists at {stac_document}")
                 # This is an exit with success
-                raise typer.Exit()        
-
-            
+                raise typer.Exit()
 
             # Make sure we pass original client down to s3 writer and stac writer
             dep_client_to_s3 = partial(write_to_s3, client=client)
@@ -201,8 +209,7 @@ def main(
                 with_raster=True,
             )
             stac_writer = CustomAwsStacWriter(
-                itempath=itempath,
-                write_stac_function=dep_client_to_s3
+                itempath=itempath, write_stac_function=dep_client_to_s3
             )
 
             try:
@@ -216,7 +223,7 @@ def main(
                     writer=writer,
                     logger=log,
                     stac_creator=stac_creator,
-                    stac_writer=stac_writer
+                    stac_writer=stac_writer,
                 ).run()
             except EmptyCollectionError:
                 log.info("No items found for this tile")
@@ -232,6 +239,7 @@ def main(
 
         except Exception as e:
             log.error(e)
+
 
 if __name__ == "__main__":
     typer.run(main)
