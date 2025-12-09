@@ -85,22 +85,35 @@ def main(
             help="Land mask to use osm, gadm or combined. Default is combined.",
         ),
     ] = "combined",
+    testrun: Annotated[
+        bool,
+        typer.Option("--testrun/--no-testrun", help="Testrun: run without model inferencing to test data reading/writing"),
+    ] = False
 ) -> None:
 
     log = logging.getLogger(tile_id)
     log.info("Starting processing")
     log.info(
-        f"Input received: \ntile_id: {tile_id}\n version: {version}\n output_bucket: {output_bucket}\n datetime: {datetime}\n overwrite: {overwrite}\n model_zip_uri: {model_zip_uri}\n collection_url_root: {collection_url_root}"
+        f"Input received: \ntile_id: {tile_id}\n version: {version}\n output_bucket: {output_bucket}\n datetime: {datetime}\n overwrite: {overwrite}\n model_zip_uri: {model_zip_uri}\n collection_url_root: {collection_url_root} \ntestrun: {testrun}"
     )
 
     grid = PACIFIC_GRID_10
     catalog = "https://stac.dataspace.copernicus.eu/v1"
     collection = "sentinel-2-global-mosaics"
 
+    assert ((collection_url_root == 'https://stac.digitalearthpacific.org/collections' and output_bucket=='dep-public-data') or
+            (collection_url_root == 'https://stac.staging.digitalearthpacific.io/collections' and output_bucket=='dep-public-staging')
+    ), f'output_bucket={output_bucket} and collection_url_root={collection_url_root} not matched. Check the python run_task.py command'
+
+    if 'staging' in collection_url_root:
+        profile = 'staging'
+    else:
+        profile = 'prod'
+
     # Make sure we can access S3
     log.info("Configuring S3 access")
-    configure_s3_access(cloud_defaults=True, region_name="ap-southeast-2")
-    client = boto3.client("s3", region_name="ap-southeast-2")
+    configure_s3_access(profile=profile, cloud_defaults=True)
+    client = boto3.client("s3")
     # show client information
 
     itempath = S3ItemPath(
@@ -112,7 +125,6 @@ def main(
     )
 
     # tile_id is a string like "45,55"
-
     stac_document = itempath.stac_path(tile_id)
     log.info(
         f"result will be saved to https://{output_bucket}.s3.us-west-2.amazonaws.com/{stac_document}"
@@ -156,7 +168,7 @@ def main(
     # - loads height model (1GB),
     # - loads one .pkl file for stats,
     # - downloading input dataset into numpy array shape [3,h,w] float32
-    processor = VegProcessorKeepNonVegPixels(land_mask_src=land_mask)
+    processor = VegProcessorKeepNonVegPixels(land_mask_src=land_mask, testrun=testrun)
 
     # Make sure we pass original client down to s3 writer and stac writer
     dep_client_to_s3 = partial(write_to_s3, client=client)
