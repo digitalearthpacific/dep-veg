@@ -557,7 +557,7 @@ class VegProcessorKeepNonVegPixels(Processor):
         img = img * self.ref_std + self.ref_mean
 
         img = img.round().clip(min=0, max=255).astype("uint8")
-        img[np.repeat(~self.mask[None], 3)] = 0 # reset masked pixels to 0
+        img[np.repeat(~self.mask[None], 3, axis=0)] = 0 # reset masked pixels to 0
         return img
 
     def patchify(self, img: np.ndarray, s: int, s1: int) -> None:
@@ -1090,3 +1090,49 @@ class CustomAwsStacWriter(StacWriter):
             **kwargs,
         )
 
+from datetime import date
+import re
+
+def quarter_start_dates(year_or_period: str):
+    """
+    Input:
+        - '2024' -> all quarter starts in 2024
+        - '2023-2024' -> all quarter starts from 2023 through 2024 inclusive
+    Output:
+        List of 'YYYY-MM-DD' strings for quarter starts (Jan 1, Apr 1, Jul 1, Oct 1).
+    """
+    if not isinstance(year_or_period, str):
+        raise TypeError("Input must be a string like '2024' or '2023-2024'.")
+
+    s = year_or_period.strip()
+
+    # if a date, do nothing
+    if is_date(s):
+        return [s]
+    
+    # Match either "YYYY" or "YYYY-YYYY" with optional whitespace around hyphen
+    m_single = re.fullmatch(r"(\d{4})", s)
+    m_range  = re.fullmatch(r"(\d{4})\s*-\s*(\d{4})", s)
+
+    if m_single:
+        start_year = end_year = int(m_single.group(1))
+    elif m_range:
+        start_year = int(m_range.group(1))
+        end_year = int(m_range.group(2))
+        if end_year < start_year:
+            raise ValueError("End year must be >= start year.")
+    else:
+        raise ValueError("Invalid format. Use 'YYYY' or 'YYYY-YYYY'.")
+
+    quarter_months = (1, 4, 7, 10)
+    out = []
+    for y in range(start_year, end_year + 1):
+        for m in quarter_months:
+            out.append(date(y, m, 1).isoformat())
+    return out
+
+def is_date(t:str):
+    """
+    Returns True if t matches the YYYY-MM-DD format, else False.
+    """
+    return bool(re.fullmatch(r"\d{4}-\d{2}-\d{2}", t))

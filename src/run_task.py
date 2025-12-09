@@ -25,8 +25,8 @@ from typing_extensions import Annotated
 
 from utils import (
     VegProcessorKeepNonVegPixels,
-    rasterize_land_mask_for_geobox,
-    download_and_extract_land_polygons, CustomAwsStacWriter,
+    CustomAwsStacWriter,
+    is_date, quarter_start_dates
 )
 boto3_logger = logging.getLogger('botocore')
 boto3_logger.setLevel(logging.WARNING)
@@ -92,130 +92,134 @@ def main(
         typer.Option("--testrun/--no-testrun", help="Testrun: run without model inferencing to test data reading/writing"),
     ] = False
 ) -> None:
-
     log = logging.getLogger(tile_id)
-    log.info("Starting processing")
-    log.info(
-        f"Input received: \ntile_id: {tile_id}\n version: {version}\n output_bucket: {output_bucket}\n datetime: {datetime}\n overwrite: {overwrite}\n model_zip_uri: {model_zip_uri}\n collection_url_root: {collection_url_root} \ntestrun: {testrun}"
-    )
 
-    grid = PACIFIC_GRID_10
-    catalog = "https://stac.dataspace.copernicus.eu/v1"
-    collection = "sentinel-2-global-mosaics"
+    
+    # get all the dates in datetimg
+    dates = quarter_start_dates(datetime) #becomes a list of dates
+    for datetime in dates:
+        log.info("Starting processing")
+        log.info(
+            f"Input received: \ntile_id: {tile_id}\nversion: {version}\noutput_bucket: {output_bucket}\ndatetime: {datetime}\noverwrite: {overwrite}\nmodel_zip_uri: {model_zip_uri}\ncollection_url_root: {collection_url_root}\ntestrun: {testrun}"
+        )
 
-    assert ((collection_url_root == 'https://stac.digitalearthpacific.org/collections' and output_bucket=='dep-public-data') or
-            (collection_url_root == 'https://stac.staging.digitalearthpacific.io/collections' and output_bucket=='dep-public-staging')
-    ), f'output_bucket={output_bucket} and collection_url_root={collection_url_root} not matched. Check the python run_task.py command'
+        grid = PACIFIC_GRID_10
+        catalog = "https://stac.dataspace.copernicus.eu/v1"
+        collection = "sentinel-2-global-mosaics"
 
-    if 'staging' in collection_url_root:
-        profile = 'staging'
-    else:
-        profile = 'prod'
+        assert ((collection_url_root == 'https://stac.digitalearthpacific.org/collections' and output_bucket=='dep-public-data') or
+                (collection_url_root == 'https://stac.staging.digitalearthpacific.io/collections' and output_bucket=='dep-public-staging')
+        ), f'output_bucket={output_bucket} and collection_url_root={collection_url_root} not matched. Check the python run_task.py command'
 
-    # Make sure we can access S3
-    log.info("Configuring S3 access")
-    configure_s3_access(profile=profile, cloud_defaults=True)
-    session = boto3.Session(profile_name=profile)
-    client = session.client("s3")
-    # show client information
+        if 'staging' in collection_url_root:
+            profile = 'staging'
+        else:
+            profile = 'prod'
 
-    itempath = S3ItemPath(
-        bucket=output_bucket,
-        sensor="s2",
-        dataset_id="vegheight",
-        version=version,
-        time=datetime,
-    )
+        # Make sure we can access S3
+        log.info("Configuring S3 access")
+        configure_s3_access(profile=profile, cloud_defaults=True)
+        session = boto3.Session(profile_name=profile)
+        client = session.client("s3")
+        # show client information
 
-    # tile_id is a string like "45,55"
-    stac_document = itempath.stac_path(tile_id)
-    log.info(
-        f"result will be saved to https://{output_bucket}.s3.us-west-2.amazonaws.com/{stac_document}"
-    )
+        itempath = S3ItemPath(
+            bucket=output_bucket,
+            sensor="s2",
+            dataset_id="vegheight",
+            version=version,
+            time=datetime,
+        )
 
-    # If we don't want to overwrite, and the destination file already exists, skip it
-    if not overwrite and object_exists(output_bucket, stac_document, client=client):
-        log.info(f"Item already exists at {stac_document}")
-        # This is an exit with success
-        raise typer.Exit()
+        # tile_id is a string like "45,55"
+        stac_document = itempath.stac_path(tile_id)
+        log.info(
+            f"result will be saved to https://{output_bucket}.s3.us-west-2.amazonaws.com/{stac_document}"
+        )
 
-    ######################## where to upload model?
-    # Download the model and unzip it
-    Path("models").mkdir(parents=True, exist_ok=True)
+        # If we don't want to overwrite, and the destination file already exists, skip it
+        if not overwrite and object_exists(output_bucket, stac_document, client=client):
+            log.info(f"Item already exists at {stac_document}")
+            # This is an exit with success
+            raise typer.Exit()
 
-    model_zip = "models/" + model_zip_uri.split("/")[-1]
-    if not Path(model_zip).exists():
-        log.info(f"Downloading model from {model_zip_uri}")
-        r = requests.get(model_zip_uri)
-        with open(model_zip, "wb") as f:
-            f.write(r.content)
+        ######################## where to upload model?
+        # Download the model and unzip it
+        Path("models").mkdir(parents=True, exist_ok=True)
 
-        log.info("Unzipping model")
-        with ZipFile(model_zip, "r") as zip_ref:
-            zip_ref.extractall("models/")
+        model_zip = "models/" + model_zip_uri.split("/")[-1]
+        if not Path(model_zip).exists():
+            log.info(f"Downloading model from {model_zip_uri}")
+            r = requests.get(model_zip_uri)
+            with open(model_zip, "wb") as f:
+                f.write(r.content)
 
-    tile_index = tuple(int(i) for i in tile_id.split(","))
-    geobox = grid.tile_geobox(tile_index)
+            log.info("Unzipping model")
+            with ZipFile(model_zip, "r") as zip_ref:
+                zip_ref.extractall("models/")
 
-    searcher = PystacSearcher(
-        catalog=catalog,
-        collections=[collection],
-        datetime=datetime,
-    )
+        tile_index = tuple(int(i) for i in tile_id.split(","))
+        geobox = grid.tile_geobox(tile_index)
 
-    loader = OdcLoader(
-        bands=["B04", "B03", "B02", "observations"],  # , "B08"],
-        chunks={"x": 1024, "y": 1024},
-    )
-    ## This includes:
-    # - loads height model (1GB),
-    # - loads one .pkl file for stats,
-    # - downloading input dataset into numpy array shape [3,h,w] float32
-    processor = VegProcessorKeepNonVegPixels(land_mask_src=land_mask, testrun=testrun)
+        searcher = PystacSearcher(
+            catalog=catalog,
+            collections=[collection],
+            datetime=datetime,
+        )
 
-    # Make sure we pass original client down to s3 writer and stac writer
-    dep_client_to_s3 = partial(write_to_s3, client=client)
-    # Custom writer so we write multithreaded
-    writer = AwsDsCogWriter(
-        itempath, write_multithreaded=True, write_function=dep_client_to_s3
-    )
-    # STAC making thing
-    stac_creator = StacCreator(
-        itempath=itempath,
-        collection_url_root=collection_url_root,
-        remote=True,
-        make_hrefs_https=True,
-        with_raster=True,
-    )
-    stac_writer = CustomAwsStacWriter(
-        itempath=itempath,
-        write_stac_function=dep_client_to_s3
-    )
+        loader = OdcLoader(
+            bands=["B04", "B03", "B02", "observations"],  # , "B08"],
+            chunks={"x": 1024, "y": 1024},
+        )
+        ## This includes:
+        # - loads height model (1GB),
+        # - loads one .pkl file for stats,
+        # - downloading input dataset into numpy array shape [3,h,w] float32
+        processor = VegProcessorKeepNonVegPixels(land_mask_src=land_mask, testrun=testrun)
 
-    try:
-        paths = Task(
+        # Make sure we pass original client down to s3 writer and stac writer
+        dep_client_to_s3 = partial(write_to_s3, client=client)
+        # Custom writer so we write multithreaded
+        writer = AwsDsCogWriter(
+            itempath, write_multithreaded=True, write_function=dep_client_to_s3
+        )
+        # STAC making thing
+        stac_creator = StacCreator(
             itempath=itempath,
-            id=tile_index,
-            area=geobox,
-            searcher=searcher,
-            loader=loader,
-            processor=processor,
-            writer=writer,
-            logger=log,
-            stac_creator=stac_creator,
-            stac_writer=stac_writer
-        ).run()
-    except EmptyCollectionError:
-        log.info("No items found for this tile")
-        raise typer.Exit()  # Exit with success
-    except Exception as e:
-        log.exception(f"Failed to process with error: {e}")
-        raise typer.Exit(code=1)
+            collection_url_root=collection_url_root,
+            remote=True,
+            make_hrefs_https=True,
+            with_raster=True,
+        )
+        stac_writer = CustomAwsStacWriter(
+            itempath=itempath,
+            write_stac_function=dep_client_to_s3
+        )
 
-    log.info(
-        f"Completed processing. Wrote {len(paths)} items to https://{output_bucket}.s3.us-west-2.amazonaws.com/{stac_document}"
-    )
-    log.info(paths)
+        try:
+            paths = Task(
+                itempath=itempath,
+                id=tile_index,
+                area=geobox,
+                searcher=searcher,
+                loader=loader,
+                processor=processor,
+                writer=writer,
+                logger=log,
+                stac_creator=stac_creator,
+                stac_writer=stac_writer
+            ).run()
+        except EmptyCollectionError:
+            log.info("No items found for this tile")
+            raise typer.Exit()  # Exit with success
+        except Exception as e:
+            log.exception(f"Failed to process with error: {e}")
+            raise typer.Exit(code=1)
+
+        log.info(
+            f"Completed processing. Wrote {len(paths)} items to https://{output_bucket}.s3.us-west-2.amazonaws.com/{stac_document}"
+        )
+        log.info(paths)
 
 
 if __name__ == "__main__":
