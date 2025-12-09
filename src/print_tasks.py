@@ -7,7 +7,6 @@ from boto3 import client
 from dep_tools.aws import object_exists
 from dep_tools.namers import S3ItemPath
 from dep_tools.grids import get_tiles
-
 app = typer.Typer()
 
 
@@ -43,6 +42,8 @@ def print_tasks(
                 valid_tile_ids.append(tile_id_)
 
         tile_ids = valid_tile_ids
+    else:
+        tile_ids = [",".join([str(i) for i in tile_id]) for tile_id, _ in tile_ids]
 
     json.dump(tile_ids, sys.stdout)
 
