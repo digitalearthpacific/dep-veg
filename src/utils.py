@@ -38,9 +38,6 @@ NUM_WORKERS = 0
 PREFETCH_FACTOR = None
 SUPPORTED_TASKS = ["allveg10m", "height10m"]
 IMAGENET_NORMALIZER = Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
-LAND_POLYGONS_URL = (
-    "https://osmdata.openstreetmap.de/download/land-polygons-complete-4326.zip"
-)
 
 log = logging.getLogger(f"{__name__}")
 
@@ -560,6 +557,7 @@ class VegProcessorKeepNonVegPixels(Processor):
         img = img * self.ref_std + self.ref_mean
 
         img = img.round().clip(min=0, max=255).astype("uint8")
+        img[np.repeat(~self.mask[None], 3)] = 0 # reset masked pixels to 0
         return img
 
     def patchify(self, img: np.ndarray, s: int, s1: int) -> None:
@@ -851,7 +849,7 @@ def get_gadm_bbox(bbox, gadm_polygon_file):
 
 
 def download_and_extract_land_polygons(
-    url: str = LAND_POLYGONS_URL, out_dir: str | Path = "land_polygons"
+    url: str = "https://osmdata.openstreetmap.de/download/land-polygons-complete-4326.zip", out_dir: str | Path = "land_polygons"
 ) -> Path:
     """
     Download the OSM land polygons zip and extract it to `out_dir`.
