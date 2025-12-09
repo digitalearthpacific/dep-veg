@@ -15,7 +15,7 @@ import rasterio
 import requests
 import torch
 import xarray as xr
-from dep_tools.grids import gadm
+from dep_tools.grids import COUNTRIES_AND_CODES
 from dep_tools.processors import Processor
 from pyproj import CRS, Transformer
 from rasterio import rio
@@ -29,8 +29,6 @@ from xarray import Dataset
 # This EPSG code is what we're using for now
 # but it's not ideal, as its not an equal area projection...
 PACIFIC_EPSG = "EPSG:3832"
-
-GADM_UNION_FILE = Path(__file__).parent / "gadm_pacific_union.gpkg"
 
 BATCH_SIZE = 6
 NUM_WORKERS = 0
@@ -279,10 +277,16 @@ class VegProcessor(Processor):
         log.info(f"Loaded referenced std: {self.ref_std}")
 
     def preprocess(self, img: np.ndarray) -> np.ndarray:
+        '''fill nan to 0 in img -> get mask of pixels that have all RGB=0 -> collapse to range 0-255 with quantile [0.001, 0.99] channel-wise
+        -> set all pixels in mask back to 0 again 
 
-        # img = img.to_array().squeeze().values # took 46s
+        Args:
+            img (np.ndarray size [3(RGB) or 4(RGBA), h, w]): the raw image loaded from xdataset
+
+        Returns:
+            np.ndarray size [3, h, w]: the processed image
+        '''
         # img.shape = [3,9600,9600] dtype uint16
-
         # replace nan with zero
         img = np.nan_to_num(img, nan=0)
 
@@ -476,8 +480,10 @@ class VegProcessorKeepNonVegPixels(Processor):
     def __init__(
         self,
         ref_stats_filepath="models/traindata_hist_quantile_mean_std.pkl",
-        land_polygons_shp="models/land-polygons-complete-4326/land_polygons.shp",
+        osm_land_polygons_file="models/land-polygons-complete-4326/land_polygons.shp",
+        gadm_land_polygons_file="models/gadm_pacific_union.gpkg",
         land_mask_src="combined",
+        testrun=False
     ):
         # self.allveg_model = torch.jit.load("models/model_allveg10m.pth").cuda()
         self.height_model = torch.jit.load("models/model_height10m.pth").cuda()
@@ -488,15 +494,29 @@ class VegProcessorKeepNonVegPixels(Processor):
         self.ref_std = self.ref_std.reshape((3, 1, 1))
         log.info(f"Loaded referenced mean: {self.ref_mean}")
         log.info(f"Loaded referenced std: {self.ref_std}")
-        self.land_shp = Path(land_polygons_shp)
+        # land polygons
+        self.osm_land_polygons_file = Path(osm_land_polygons_file)
+        self.gadm_land_polygons_file = Path(gadm_land_polygons_file)
         self.land_mask_src = land_mask_src
+
         # set in processing
         self.tce_img = None
         self.img = None
         self.landmask = None
 
-    def preprocess(self, img: np.ndarray) -> np.ndarray:
+        self.testrun = testrun
 
+    def preprocess(self, img: np.ndarray) -> np.ndarray:
+        '''fill nan to 0 in img -> get mask of pixels that have all RGB=0 -> collapse to range 0-255 with quantile [0.001, 0.99] channel-wise
+        -> set all pixels in mask back to 0 again 
+
+        Args:
+            img (np.ndarray size [3(RGB) or 4(RGBA), h, w]): the raw image loaded from xdataset
+
+        Returns:
+            np.ndarray size [3, h, w]: the processed image
+            also registered self.mask
+        '''
         # img = img.to_array().squeeze().values # took 46s
         # img.shape = [3,9600,9600] dtype uint16
 
@@ -567,29 +587,19 @@ class VegProcessorKeepNonVegPixels(Processor):
         """
         # 2) Read only polygons intersecting this bbox (still in 4326)
         # allow for parquet files too
-        if self.land_mask_src == "gadm":
-            land = get_gadm_bbox(bbox_4326)
-        elif self.land_mask_src == "osm":
-            land = self._get_land_mask_from_file(bbox_4326)
+        if self.land_mask_src == "osm":
+            landpolygon = get_osm_bbox(bbox_4326, self.osm_land_polygons_file)
         elif self.land_mask_src == "combined":
             all_polys = pd.concat(
                 [
-                    get_gadm_bbox(bbox_4326),
-                    self._get_land_mask_from_file(bbox=bbox_4326),
+                    get_gadm_bbox(bbox_4326, self.gadm_land_polygons_file),
+                    get_osm_bbox(bbox_4326, self.osm_land_polygons_file)
                 ]
             )
-            land = all_polys.dissolve()[["geometry"]]
+            landpolygon = all_polys.dissolve()[["geometry"]]
         else:
-            land = get_gadm_bbox(bbox_4326)
-        return land
-
-    def _get_land_mask_from_file(self, bbox) -> gpd.GeoDataFrame:
-        land_shp_path = Path(self.land_shp)
-        if land_shp_path.suffix.lower() == ".parquet":
-            land = gpd.read_parquet(land_shp_path, bbox=bbox)
-        else:
-            land = gpd.read_file(land_shp_path, bbox=bbox)
-        return land
+            landpolygon = get_gadm_bbox(bbox_4326, self.gadm_land_polygons_file)
+        return landpolygon
 
     def infer_height_estimation(
         self, img: np.ndarray[np.uint8], standardize=False
@@ -637,8 +647,9 @@ class VegProcessorKeepNonVegPixels(Processor):
         # Could potententially look at just using NDWI instead
         # 1) Compute bounding box of geobox in EPSG:4326 to efficiently subset polygons
         bbox_4326 = geobox_bounds_in_crs(geobox, target_crs="EPSG:4326")
-        land = self.get_land_mask(bbox_4326)
-        landmask = rasterize_land_mask_for_geobox(geobox, land)  # [9600,9600]
+        landpolygon = self.get_land_mask(bbox_4326)
+        landmask = rasterize_land_mask_for_geobox(geobox, landpolygon)  # [9600,9600]
+        
         img = img.to_array().squeeze().values
         obs = img[-1]  # obs
 
@@ -660,9 +671,12 @@ class VegProcessorKeepNonVegPixels(Processor):
 
         # Step 3: standardize image then infer it with height_model
         log.info("Infer height")
-        height = self.infer_height_estimation(
-            img, standardize=True
-        )  # height [1, h, w] float16
+        if not self.testrun:
+            height = self.infer_height_estimation(
+                img, standardize=True
+            )  # height [1, h, w] float16
+        else:
+            height = self.mask[None]
 
         # Step 4: calculate confidence from obs
         obs = np.nan_to_num(obs, nan=0)  # set no-observation from nan to 0
@@ -809,6 +823,29 @@ class VegProcessorKeepNonVegPixels(Processor):
         rgb_out = rgb_out.rename("true_color")
         return rgb_out
 
+def get_osm_bbox(bbox, osm_polygons_file) -> gpd.GeoDataFrame:
+    if osm_polygons_file.suffix.lower() == ".parquet":
+        box = gpd.read_parquet(osm_polygons_file, bbox=bbox)
+    else:
+        box = gpd.read_file(osm_polygons_file, bbox=bbox)
+    return box
+
+def get_gadm_bbox(bbox, gadm_polygon_file):
+    if not gadm_polygon_file.exists():
+        log.info(f'Downloading GADM land data to {gadm_polygon_file}...')
+        all_polys = pd.concat(
+            [
+                gpd.read_file(
+                    f"https://geodata.ucdavis.edu/gadm/gadm4.1/gpkg/gadm41_{code}.gpkg",
+                    layer="ADM_ADM_0",
+                )
+                for code in COUNTRIES_AND_CODES.values()
+            ]
+        )
+
+        all_polys.dissolve()[["geometry"]].to_file(gadm_polygon_file)
+    return gpd.read_file(gadm_polygon_file, bbox=bbox)
+
 
 def download_and_extract_land_polygons(
     url: str = LAND_POLYGONS_URL, out_dir: str | Path = "land_polygons"
@@ -834,7 +871,6 @@ def download_and_extract_land_polygons(
         shp_files = list(out_dir.rglob("*.shp"))
         if not shp_files:
             raise FileNotFoundError("No .shp file found in extracted land polygons.")
-    # Usually it's named 'land_
 
 
 def geobox_raster_transform(geobox):
@@ -1038,7 +1074,4 @@ def load_raster(raster_path):
     return arr, meta
 
 
-def get_gadm_bbox(bbox):
-    if not GADM_UNION_FILE.exists():
-        gadm()
-    return gpd.read_file(GADM_UNION_FILE, bbox=bbox)
+
