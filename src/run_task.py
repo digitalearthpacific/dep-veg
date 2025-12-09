@@ -139,23 +139,8 @@ def main(
     # - downloading input dataset into numpy array shape [3,h,w] float32
     processor = VegProcessorKeepNonVegPixels(land_mask_src=land_mask, testrun=testrun)
 
-    # get all the dates in datetimg
-    searcher = PystacSearcher(
-            catalog=catalog,
-            collections=[collection],
-            datetime=datetime,
-        )
-
-    loader = OdcLoader(
-        bands=["B04", "B03", "B02", "observations"],  # , "B08"],
-        chunks={"x": 1024, "y": 1024},
-    )
-    items = searcher.search(geobox)
-    data = loader.load(items, geobox)
-    dates = [str(i) for i in data.time.values]
+    dates = quarter_start_dates(datetime)    
     log.info(f'Running inference for the following dates: {dates}')
-    # dates = quarter_start_dates(times) #becomes a list of dates
-    # breakpoint()
     # ---- Main loop across dates ----
     for datetime in dates:
         try:
@@ -172,6 +157,21 @@ def main(
                 time=datetime,
             )
 
+            searcher = PystacSearcher(
+                catalog=catalog,
+                collections=[collection],
+                datetime=datetime,
+            )
+
+            loader = OdcLoader(
+                bands=["B04", "B03", "B02", "observations"],  # , "B08"],
+                chunks={"x": 1024, "y": 1024},
+            )
+            items = searcher.search(geobox)
+            if len(items) == 0:
+                log.info(f'Image not found for this date {datetime}')
+                continue
+            
             # tile_id is a string like "45,55"
             stac_document = itempath.stac_path(tile_id)
             log.info(
@@ -184,16 +184,8 @@ def main(
                 # This is an exit with success
                 raise typer.Exit()        
 
-            searcher = PystacSearcher(
-                catalog=catalog,
-                collections=[collection],
-                datetime=datetime,
-            )
+            
 
-            loader = OdcLoader(
-                bands=["B04", "B03", "B02", "observations"],  # , "B08"],
-                chunks={"x": 1024, "y": 1024},
-            )
             # Make sure we pass original client down to s3 writer and stac writer
             dep_client_to_s3 = partial(write_to_s3, client=client)
             # Custom writer so we write multithreaded
