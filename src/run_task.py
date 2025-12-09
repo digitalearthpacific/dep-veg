@@ -173,7 +173,7 @@ def main(
 
             loader = OdcLoader(
                 bands=["B04", "B03", "B02", "observations"],  # , "B08"],
-                chunks={"x": 1024, "y": 1024},
+                chunks={"x": 9600, "y": 9600},
             )
             items = searcher.search(geobox)
             if len(items) == 0:
@@ -238,7 +238,7 @@ def main(
             log.info(paths)
 
         except Exception as e:
-            log.error(e)
+            log.exception('Data not found')
 
 
 if __name__ == "__main__":
