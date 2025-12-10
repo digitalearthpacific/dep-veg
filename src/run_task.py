@@ -23,6 +23,7 @@ from dep_tools.writers import AwsDsCogWriter, LocalDsCogWriter, AwsStacWriter
 from odc.stac import configure_s3_access
 from typing_extensions import Annotated
 from dotenv import load_dotenv
+
 load_dotenv()
 from utils import (
     VegProcessorKeepNonVegPixels,
