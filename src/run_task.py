@@ -79,7 +79,11 @@ def main(
         typer.Option("--overwrite/--no-overwrite", help="Overwrite existing results"),
     ] = False,
     datetime: Annotated[
-        str, typer.Option("--datetime", help="Datetime string (e.g. 2024)")
+        str,
+        typer.Option(
+            "--datetime",
+            help="Datetime string, either year or year period or specific date (e.g. 2024 or 2023-2024 or 2024-10-01)",
+        ),
     ] = "2024",
     land_mask: Annotated[
         str,
@@ -238,7 +242,7 @@ def main(
             log.info(paths)
 
         except Exception as e:
-            log.exception('Data not found')
+            log.exception("Data not found")
 
 
 if __name__ == "__main__":
