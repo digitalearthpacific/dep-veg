@@ -22,7 +22,8 @@ from task import CopernicusReadAwsStacTask as Task
 from dep_tools.writers import AwsDsCogWriter, LocalDsCogWriter, AwsStacWriter
 from odc.stac import configure_s3_access
 from typing_extensions import Annotated
-
+from dotenv import load_dotenv
+load_dotenv()
 from utils import (
     VegProcessorKeepNonVegPixels,
     CustomAwsStacWriter,
@@ -122,8 +123,11 @@ def main(
 
     # Make sure we can access S3
     log.info("Configuring S3 access")
-    configure_s3_access(profile=profile, cloud_defaults=True)
-    session = boto3.Session(profile_name=profile)
+    # configure_s3_access(profile=profile, cloud_defaults=True)
+    # session = boto3.Session(profile_name=profile)
+
+    configure_s3_access(cloud_defaults=True)
+    session = boto3.Session()
     client = session.client("s3")
     # show client information
 
