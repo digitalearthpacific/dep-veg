@@ -12,6 +12,7 @@ from dep_tools.exceptions import EmptyCollectionError
 from tqdm.auto import tqdm
 from utils import quarter_start_dates
 from dotenv import load_dotenv
+
 load_dotenv()
 app = typer.Typer()
 
@@ -32,7 +33,7 @@ def print_tasks(
     if not overwrite:
         s3_client = client("s3")
         valid_tile_ids = []
-        
+
         catalog = "https://stac.dataspace.copernicus.eu/v1"
         collection = "sentinel-2-global-mosaics"
         copernicus_searcher = PystacSearcher(
@@ -48,7 +49,7 @@ def print_tasks(
             try:
                 items = copernicus_searcher.search(geobox)
                 data = loader.load(items, geobox)
-                dates = [str(i).split('T')[0] for i in data.time.values]
+                dates = [str(i).split("T")[0] for i in data.time.values]
             except EmptyCollectionError:
                 continue
             for date in dates:
@@ -60,8 +61,7 @@ def print_tasks(
                     time=date,
                 )
                 stac_path = itempath.stac_path(tile_id)
-                
-                
+
                 if not object_exists(output_bucket, stac_path, client=s3_client):
                     tile_id_ = ",".join([str(i) for i in tile_id])
                     valid_tile_ids.append(tile_id_)

@@ -177,8 +177,8 @@ def main(
             bands=["B04", "B03", "B02", "observations"],  # , "B08"],
             chunks={"x": 9600, "y": 9600},
         )
-        try: #catch the no data found and skip to next date
-            searcher.search(geobox) # this line raises error if no data found
+        try:  # catch the no data found and skip to next date
+            searcher.search(geobox)  # this line raises error if no data found
         except EmptyCollectionError:
             log.exception(f"Image not found for this date {datetime}")
             continue
@@ -190,9 +190,7 @@ def main(
         )
 
         # If we don't want to overwrite, and the destination file already exists, skip it
-        if not overwrite and object_exists(
-            output_bucket, stac_document, client=client
-        ):
+        if not overwrite and object_exists(output_bucket, stac_document, client=client):
             log.info(f"Item already exists at {stac_document}")
             # This is an exit with success
             raise typer.Exit()
