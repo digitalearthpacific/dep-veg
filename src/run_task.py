@@ -26,7 +26,6 @@ from typing_extensions import Annotated
 from utils import (
     VegProcessorKeepNonVegPixels,
     CustomAwsStacWriter,
-    is_date,
     quarter_start_dates,
 )
 
@@ -155,94 +154,88 @@ def main(
     log.info(f"Running inference for the following dates: {dates}")
     # ---- Main loop across dates ----
     for datetime in dates:
+        log.info("Starting processing")
+        log.info(
+            f"Input received: \ntile_id: {tile_id}\nversion: {version}\noutput_bucket: {output_bucket}\ndatetime: {datetime}\noverwrite: {overwrite}\nmodel_zip_uri: {model_zip_uri}\ncollection_url_root: {collection_url_root}\ntestrun: {testrun}"
+        )
+
+        itempath = S3ItemPath(
+            bucket=output_bucket,
+            sensor="s2",
+            dataset_id="vegheight",
+            version=version,
+            time=datetime,
+        )
+
+        searcher = PystacSearcher(
+            catalog=catalog,
+            collections=[collection],
+            datetime=datetime,
+        )
+
+        loader = OdcLoader(
+            bands=["B04", "B03", "B02", "observations"],  # , "B08"],
+            chunks={"x": 9600, "y": 9600},
+        )
+        try: #catch the no data found and skip to next date
+            searcher.search(geobox) # this line raises error if no data found
+        except EmptyCollectionError:
+            log.exception(f"Image not found for this date {datetime}")
+            continue
+
+        # tile_id is a string like "45,55"
+        stac_document = itempath.stac_path(tile_id)
+        log.info(
+            f"result will be saved to https://{output_bucket}.s3.us-west-2.amazonaws.com/{stac_document}"
+        )
+
+        # If we don't want to overwrite, and the destination file already exists, skip it
+        if not overwrite and object_exists(
+            output_bucket, stac_document, client=client
+        ):
+            log.info(f"Item already exists at {stac_document}")
+            # This is an exit with success
+            raise typer.Exit()
+
+        # Make sure we pass original client down to s3 writer and stac writer
+        dep_client_to_s3 = partial(write_to_s3, client=client)
+        # Custom writer so we write multithreaded
+        writer = AwsDsCogWriter(
+            itempath, write_multithreaded=True, write_function=dep_client_to_s3
+        )
+        # STAC making thing
+        stac_creator = StacCreator(
+            itempath=itempath,
+            collection_url_root=collection_url_root,
+            remote=True,
+            # make_hrefs_https=True,
+            # with_raster=True,
+        )
+        stac_writer = CustomAwsStacWriter(
+            itempath=itempath, write_stac_function=dep_client_to_s3
+        )
+
         try:
-            log.info("Starting processing")
-            log.info(
-                f"Input received: \ntile_id: {tile_id}\nversion: {version}\noutput_bucket: {output_bucket}\ndatetime: {datetime}\noverwrite: {overwrite}\nmodel_zip_uri: {model_zip_uri}\ncollection_url_root: {collection_url_root}\ntestrun: {testrun}"
-            )
-
-            itempath = S3ItemPath(
-                bucket=output_bucket,
-                sensor="s2",
-                dataset_id="vegheight",
-                version=version,
-                time=datetime,
-            )
-
-            searcher = PystacSearcher(
-                catalog=catalog,
-                collections=[collection],
-                datetime=datetime,
-            )
-
-            loader = OdcLoader(
-                bands=["B04", "B03", "B02", "observations"],  # , "B08"],
-                chunks={"x": 9600, "y": 9600},
-            )
-            items = searcher.search(geobox)
-            if len(items) == 0:
-                log.info(f"Image not found for this date {datetime}")
-                continue
-
-            # tile_id is a string like "45,55"
-            stac_document = itempath.stac_path(tile_id)
-            log.info(
-                f"result will be saved to https://{output_bucket}.s3.us-west-2.amazonaws.com/{stac_document}"
-            )
-
-            # If we don't want to overwrite, and the destination file already exists, skip it
-            if not overwrite and object_exists(
-                output_bucket, stac_document, client=client
-            ):
-                log.info(f"Item already exists at {stac_document}")
-                # This is an exit with success
-                raise typer.Exit()
-
-            # Make sure we pass original client down to s3 writer and stac writer
-            dep_client_to_s3 = partial(write_to_s3, client=client)
-            # Custom writer so we write multithreaded
-            writer = AwsDsCogWriter(
-                itempath, write_multithreaded=True, write_function=dep_client_to_s3
-            )
-            # STAC making thing
-            stac_creator = StacCreator(
+            paths = Task(
                 itempath=itempath,
-                collection_url_root=collection_url_root,
-                remote=True,
-                make_hrefs_https=True,
-                with_raster=True,
-            )
-            stac_writer = CustomAwsStacWriter(
-                itempath=itempath, write_stac_function=dep_client_to_s3
-            )
-
-            try:
-                paths = Task(
-                    itempath=itempath,
-                    id=tile_index,
-                    area=geobox,
-                    searcher=searcher,
-                    loader=loader,
-                    processor=processor,
-                    writer=writer,
-                    logger=log,
-                    stac_creator=stac_creator,
-                    stac_writer=stac_writer,
-                ).run()
-            except EmptyCollectionError:
-                log.info("No items found for this tile")
-                raise typer.Exit()  # Exit with success
-            except Exception as e:
-                log.exception(f"Failed to process with error: {e}")
-                raise typer.Exit(code=1)
-
-            log.info(
-                f"Completed processing. Wrote {len(paths)} items to https://{output_bucket}.s3.us-west-2.amazonaws.com/{stac_document}"
-            )
-            log.info(paths)
-
+                id=tile_index,
+                area=geobox,
+                searcher=searcher,
+                loader=loader,
+                processor=processor,
+                writer=writer,
+                logger=log,
+                stac_creator=stac_creator,
+                stac_writer=stac_writer,
+            ).run()
         except Exception as e:
-            log.exception("Data not found")
+            log.exception(f"Failed to process with error: {e}")
+            raise typer.Exit(code=1)
+
+        log.info(
+            f"Completed processing. Wrote {len(paths)} items to https://{output_bucket}.s3.us-west-2.amazonaws.com/{stac_document}"
+        )
+        log.info(paths)
 
 
 if __name__ == "__main__":
