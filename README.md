@@ -2,7 +2,7 @@
 
 Processor is at src/utils.py/VegProcessorKeepNonVegPixels
 
-`python src/run_task.py --tile-id 45,55 --version 0.0.0 --output-bucket dep-public-staging --collection-url-root https://stac.staging.digitalearthpacific.org/collections --datetime 2022`
+`python src/run_task.py --tile-id 45,55 --version 1.0.0 --output-bucket dep-public-staging --collection-url-root https://stac.staging.digitalearthpacific.io/collections --datetime 2022`
 
 NOTE: datetime can be a year or a period between years (2023-2024) or a specific date (2024-10-01). Data is only available at quarterly start dates. If data isn't available, the code simply exits.
 
