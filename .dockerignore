@@ -5,3 +5,4 @@ models/
 aws/
 .aws/
 Test_Processor.ipynb
+.env!/.devcontainer/

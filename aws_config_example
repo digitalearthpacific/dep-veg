@@ -1,0 +1,29 @@
+[profile staging]
+aws_access_key_id= 
+aws_secret_access_key= 
+sso_session = DEP
+sso_account_id = 
+sso_role_name = 
+region = us-west-2
+
+[sso-session DEP]
+sso_start_url = https://digitalearthpacific.awsapps.com/start/
+sso_region = us-east-1
+sso_registration_scopes = sso:account:access
+
+[profile prod]
+aws_access_key_id= 
+aws_secret_access_key= 
+region = us-west-2
+
+[profile copernicus]
+aws_access_key_id= 
+aws_secret_access_key= 
+services = s3-specific
+ 
+[services s3-specific]
+s3 = 
+  endpoint_url = https://eodata.ams.dataspace.copernicus.eu/
+  max_concurrent_requests = 20
+  max_bandwidth = 20MB/s
+  use_accelerate_endpoint = true

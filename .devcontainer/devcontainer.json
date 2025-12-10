@@ -1,0 +1,8 @@
+// Default Ubuntu-based DevContainer Template.
+// For more customization options, see https://containers.dev/implementors/json_reference
+{
+  "name": "Default",
+  "build": { "dockerfile": "Dockerfile", "context": ".." },
+  "runArgs": [ "--gpus", "all" ]
+
+}
