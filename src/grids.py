@@ -9,6 +9,8 @@ from geopandas import GeoDataFrame, GeoSeries
 from odc.geo import XY, BoundingBox, Geometry
 from odc.geo.gridspec import GridSpec, GeoBox
 from shapely.geometry import shape
+from zipfile import ZipFile
+import requests
 
 # This EPSG code is what we're using for now
 # but it's not ideal, as its not an equal area projection...
@@ -18,6 +20,21 @@ GADM_FILE = Path("models") / "gadm_pacific.gpkg"
 GADM_UNION_FILE = Path("models") / "gadm_pacific_union.gpkg"
 # print(GADM_FILE.exists(), GADM_UNION_FILE.exists())
 # print(GADM_FILE, GADM_UNION_FILE)
+model_zip_uri = "https://dep-public-staging.s3.us-west-2.amazonaws.com/dep_s2_vegheight/models/dep-veg-model-v2.zip"
+if not Path("models").exists():
+    # Download the model and unzip it
+    Path("models").mkdir(parents=True, exist_ok=True)
+
+    model_zip = "models/" + model_zip_uri.split("/")[-1]
+    if not Path(model_zip).exists():
+        print(f"Downloading model from {model_zip_uri}")
+        r = requests.get(model_zip_uri)
+        with open(model_zip, "wb") as f:
+            f.write(r.content)
+
+        print("Unzipping model")
+        with ZipFile(model_zip, "r") as zip_ref:
+            zip_ref.extractall("models/")
 
 COUNTRIES_AND_CODES = {
     "American Samoa": "ASM",
