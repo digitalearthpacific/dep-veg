@@ -16,7 +16,7 @@ import requests
 import torch
 import xarray as xr
 from dep_tools.aws import write_to_s3
-from dep_tools.grids import COUNTRIES_AND_CODES
+from grids import COUNTRIES_AND_CODES
 from dep_tools.namers import S3ItemPath
 from dep_tools.processors import Processor
 from dep_tools.writers import StacWriter

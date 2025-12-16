@@ -10,7 +10,7 @@ import requests
 import typer
 from dep_tools.aws import object_exists, write_to_s3
 from dep_tools.exceptions import EmptyCollectionError
-from dep_tools.grids import PACIFIC_GRID_10
+from grids import PACIFIC_GRID_10
 from dep_tools.loaders import OdcLoader
 from dep_tools.namers import S3ItemPath
 from dep_tools.searchers import PystacSearcher
@@ -74,7 +74,7 @@ def main(
     ] = "https://stac.staging.digitalearthpacific.io/collections",
     model_zip_uri: Annotated[
         str, typer.Option("--model-zip-uri", help="Deep Learning Model download path")
-    ] = "https://dep-public-staging.s3.us-west-2.amazonaws.com/dep_s2_vegheight/models/dep-veg-model-v1.zip",
+    ] = "https://dep-public-staging.s3.us-west-2.amazonaws.com/dep_s2_vegheight/models/dep-veg-model-v2.zip",
     overwrite: Annotated[
         bool,
         typer.Option("--overwrite/--no-overwrite", help="Overwrite existing results"),

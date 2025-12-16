@@ -5,7 +5,7 @@ import typer
 from boto3 import client
 from dep_tools.aws import object_exists
 from dep_tools.namers import S3ItemPath
-from dep_tools.grids import get_tiles
+from grids import get_tiles
 from dep_tools.searchers import PystacSearcher
 from dep_tools.loaders import OdcLoader
 from dep_tools.exceptions import EmptyCollectionError
