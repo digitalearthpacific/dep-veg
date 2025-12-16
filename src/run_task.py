@@ -210,7 +210,7 @@ def main(
             itempath=itempath,
             collection_url_root=collection_url_root,
             # remote=True,
-            make_hrefs_https=True,
+            # make_hrefs_https=True,
             with_raster=True,
         )
         stac_writer = CustomAwsStacWriter(
@@ -231,7 +231,7 @@ def main(
                 stac_writer=stac_writer,
             ).run()
         except Exception as e:
-            log.exception(f"Failed to process with error: {e}")
+            log.warning(f"Failed to process with error: {e}")
             continue
 
         log.info(
