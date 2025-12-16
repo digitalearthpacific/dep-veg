@@ -14,8 +14,8 @@ from shapely.geometry import shape
 # but it's not ideal, as its not an equal area projection...
 PACIFIC_EPSG = "EPSG:3832"
 
-GADM_FILE =  Path('models')/ "gadm_pacific.gpkg"
-GADM_UNION_FILE = Path('models') / "gadm_pacific_union.gpkg"
+GADM_FILE = Path("models") / "gadm_pacific.gpkg"
+GADM_UNION_FILE = Path("models") / "gadm_pacific_union.gpkg"
 # print(GADM_FILE.exists(), GADM_UNION_FILE.exists())
 # print(GADM_FILE, GADM_UNION_FILE)
 
