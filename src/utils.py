@@ -641,7 +641,7 @@ class VegProcessorKeepNonVegPixels(Processor):
             rgb0_ds = self.get_rgb_ds(img)
             output_data.append(rgb0_ds)
 
-        self.tce_img = self.apply_rgb_enhancements(img["B04"], img["B03"], img["B02"])
+        # self.tce_img = self.apply_rgb_enhancements(img["B04"], img["B03"], img["B02"])
 
         # Observation processing should all be done on using xarray rasterise land mask could also produce xr DataArray
         # obs = img["observations"]
@@ -704,7 +704,7 @@ class VegProcessorKeepNonVegPixels(Processor):
         # ---- to datasets + merge ----
         height_ds = height_da.to_dataset()
         conf_ds = conf_da.to_dataset()
-        out_ds = xr.merge([height_ds, conf_ds, self.tce_img, *output_data])
+        out_ds = xr.merge([height_ds, conf_ds, *output_data])
 
         # ---- mask + nodata attrs ----
         out_ds["height"] = out_ds["height"].where(self.mask)
@@ -1141,3 +1141,16 @@ def is_date(t: str):
     Returns True if t matches the YYYY-MM-DD format, else False.
     """
     return bool(re.fullmatch(r"\d{4}-\d{2}-\d{2}", t))
+
+
+def to_iso8601_quarter(date_str: str) -> str:
+    """
+    Convert a date string "YYYY-MM-DD" (quarter start) to ISO 8601 duration format "YYYY-MM--P3M".
+    Example: "2024-01-01" -> "2024-01--P3M"
+    """
+    if not is_date(date_str):
+        raise ValueError(
+            f"Input '{date_str}' is not a valid date in 'YYYY-MM-DD' format."
+        )
+    year, month, _ = date_str.split("-")
+    return f"{year}-{month}--P3M"

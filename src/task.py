@@ -5,10 +5,15 @@ from logging import getLogger, Logger
 import boto3
 import rasterio
 import rasterio as rio
-from dep_tools.stac_utils import set_stac_properties  # wherever this lives
+
+# from dep_tools.stac_utils import set_stac_properties  # wherever this lives
 from dep_tools.task import AwsStacTask
 from odc.loader._rio import GDAL_CLOUD_DEFAULTS, configure_rio
 from rasterio.session import AWSSession
+import numpy as np
+from datetime import datetime
+from xarray import DataArray, Dataset
+import pandas as pd
 
 logger = getLogger(__name__)
 
@@ -145,6 +150,41 @@ class CopernicusReadAwsStacTask(AwsStacTask):
             self.stac_writer.write(stac_item, self.id)
 
         return paths
+
+
+def set_stac_properties(
+    input_xr: DataArray | Dataset, output_xr: DataArray | Dataset
+) -> Dataset | DataArray:
+    """Sets an attribute called "stac_properties" in the output which is a
+    dictionary containing the following properties for use in stac writing:
+    "start_datetime", "end_datetime", "datetime", and "created". These are
+    set from the input_xr.time coordinate. Typically, `input_xr` would be
+    an array of EO data (e.g. Landsat) containing data over a range of
+    dates (such as a year).
+    """
+
+    def get_start_end_datetimes(data):
+        """
+        Given an xarray Dataset with a 'time' coordinate, returns:
+        - start_datetime: the first time value in ISO format with Z (e.g. 'YYYY-MM-DDT00:00:00Z')
+        - end_datetime: the last day of the month that is 3 months after start_date at 23:59:59Z
+        """
+        start = pd.to_datetime(data.time.values[0])
+        # Add 2 months to get to the 3rd month (since MonthEnd is inclusive)
+        end = (start + pd.DateOffset(months=2)).replace(day=1) + pd.offsets.MonthEnd(0)
+        start_datetime = start.strftime("%Y-%m-%dT00:00:00Z")
+        end_datetime = end.strftime("%Y-%m-%dT23:59:59Z")
+        return start_datetime, end_datetime
+
+    start_datetime, end_datetime = get_start_end_datetimes(input_xr)
+    output_xr.attrs["stac_properties"] = dict(
+        start_datetime=start_datetime,
+        datetime=start_datetime,
+        end_datetime=end_datetime,
+        created=np.datetime_as_string(np.datetime64(datetime.now()), timezone="UTC"),
+    )
+
+    return output_xr
 
 
 def get_copernicus_rio_config(profile_name="copernicus", force_keys=False):
