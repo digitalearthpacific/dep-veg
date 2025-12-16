@@ -27,12 +27,10 @@ if not Path("models").exists():
 
     model_zip = "models/" + model_zip_uri.split("/")[-1]
     if not Path(model_zip).exists():
-        print(f"Downloading model from {model_zip_uri}")
         r = requests.get(model_zip_uri)
         with open(model_zip, "wb") as f:
             f.write(r.content)
 
-        print("Unzipping model")
         with ZipFile(model_zip, "r") as zip_ref:
             zip_ref.extractall("models/")
 
